@@ -50,7 +50,7 @@ export function SubjectClient({ initialSubjects }: { initialSubjects: any[] }) {
         const updated = await updateSubject(editingSubject.id, { name, color });
         setSubjects(subjects.map(s => s.id === updated.id ? updated : s));
       } else {
-        const newSubject = await createSubject({ name, color });
+        const newSubject = await createSubject({ name, color, code: name.substring(0, 3).toUpperCase(), type: "Theory" });
         setSubjects([newSubject, ...subjects]);
       }
       setIsOpen(false);

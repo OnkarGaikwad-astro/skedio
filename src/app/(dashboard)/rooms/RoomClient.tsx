@@ -50,7 +50,7 @@ export function RoomClient({ initialRooms }: { initialRooms: any[] }) {
         const updated = await updateRoom(editingRoom.id, { name, capacity });
         setRooms(rooms.map(r => r.id === updated.id ? updated : r));
       } else {
-        const newRoom = await createRoom({ name, capacity });
+        const newRoom = await createRoom({ name, capacity, type: "General" });
         setRooms([newRoom, ...rooms]);
       }
       setIsOpen(false);

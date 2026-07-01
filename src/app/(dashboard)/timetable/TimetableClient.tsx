@@ -225,40 +225,8 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
     }
   };
 
-  const exportToPDF = async () => {
-    if (!timetableRef.current || Object.keys(schedule).length === 0) return;
-    setIsExporting(true);
-    
-    try {
-      const { toPng } = await import('html-to-image');
-      
-      const dataUrl = await toPng(timetableRef.current, {
-        backgroundColor: '#ffffff',
-        pixelRatio: 2,
-        style: {
-          transform: 'scale(1)',
-          transformOrigin: 'top left'
-        }
-      });
-      
-      const pdf = new jsPDF({
-        orientation: "landscape",
-        unit: "mm",
-        format: "a4",
-      });
-      
-      const imgProps = pdf.getImageProperties(dataUrl);
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-      
-      pdf.addImage(dataUrl, "PNG", 0, 0, pdfWidth, pdfHeight);
-      pdf.save("School_Timetable.pdf");
-    } catch (err) {
-      console.error("PDF Export failed:", err);
-      alert("Failed to export PDF.");
-    } finally {
-      setIsExporting(false);
-    }
+  const exportToPDF = () => {
+    window.print();
   };
 
   // Helper to find a teacher's class for a specific day and period
@@ -273,10 +241,10 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
   };
 
   return (
-    <div className="flex flex-col h-full space-y-6">
+    <div className="flex flex-col h-full space-y-6 print-expand">
       
       {/* Top View Toggle */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-4 no-print">
         <div className="flex bg-muted/50 p-1 rounded-[16px] border border-border/50">
           <button 
             onClick={() => setViewMode("class")}
@@ -329,7 +297,7 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
       </div>
 
       {/* Toolbar */}
-      <div className="flex flex-wrap items-end justify-between border-b border-border/50 pb-4 gap-4">
+      <div className="flex flex-wrap items-end justify-between border-b border-border/50 pb-4 gap-4 no-print">
         <div className="flex flex-wrap items-center gap-4">
           
           {viewMode === "class" && (

@@ -105,7 +105,7 @@ export function ClassClient({ initialClasses, teachers }: { initialClasses: any[
               <div className="space-y-2 pt-2 border-t border-border/50">
                 <Label>Class Teacher</Label>
                 <p className="text-[11px] text-muted-foreground mb-2">The Class Teacher will automatically be assigned to the first period of the day for this class.</p>
-                <Select value={selectedClassTeacher} onValueChange={setSelectedClassTeacher}>
+                <Select value={selectedClassTeacher} onValueChange={(val) => setSelectedClassTeacher(val || "none")}>
                   <SelectTrigger className="w-full rounded-[14px]">
                     <SelectValue placeholder="Select a teacher">
                       {selectedClassTeacher !== "none" 

@@ -134,3 +134,34 @@
     @apply font-heading tracking-tight;
   }
 }
+
+@media print {
+  body {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    background: white !important;
+  }
+  
+  /* Hide the sidebar */
+  aside, 
+  [data-sidebar="true"],
+  .no-print {
+    display: none !important;
+  }
+
+  /* Force elements to expand for printing */
+  .print-expand,
+  .print-expand * {
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+  }
+  
+  /* Layout adjustments */
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}

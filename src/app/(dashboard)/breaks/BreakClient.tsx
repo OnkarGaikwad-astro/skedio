@@ -38,7 +38,7 @@ export function BreakClient({ initialBreaks }: { initialBreaks: Break[] }) {
         const updated = await updateBreak(editingBreak.id, { name, startTime, endTime });
         setBreaks(breaks.map(b => b.id === updated.id ? updated : b));
       } else {
-        const res = await createBreak({ name, startTime, endTime });
+        const res = await createBreak(formData);
         if (res.success && res.break) {
           setBreaks([res.break, ...breaks]);
         }
@@ -146,10 +146,8 @@ export function BreakClient({ initialBreaks }: { initialBreaks: Break[] }) {
               </div>
               
               <div className="pt-4 flex gap-3">
-                <Dialog.Close asChild>
-                  <button type="button" className="flex-1 bg-muted hover:bg-muted/80 text-foreground py-2.5 rounded-[14px] text-sm font-medium transition-colors">
-                    Cancel
-                  </button>
+                <Dialog.Close className="flex-1 bg-muted hover:bg-muted/80 text-foreground py-2.5 rounded-[14px] text-sm font-medium transition-colors">
+                  Cancel
                 </Dialog.Close>
                 <button
                   type="submit"
