@@ -1,0 +1,1 @@
+const { Client } = require('pg'); require('dotenv').config(); async function run() { const c = new Client({ connectionString: process.env.DATABASE_URL }); await c.connect(); await c.query('ALTER TABLE "Timetable" DISABLE ROW LEVEL SECURITY;'); await c.query('GRANT ALL ON "Timetable" TO anon, authenticated, service_role;'); console.log('Done!'); await c.end(); } run();

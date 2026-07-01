@@ -2,8 +2,9 @@ import { getClasses } from "@/app/actions/class";
 import { getTeachers } from "@/app/actions/teacher";
 import { getSubjects } from "@/app/actions/subject";
 import { getBreaks } from "@/app/actions/break";
+import { getTimetable } from "@/app/actions/timetable";
 import { TimetableClient } from "./TimetableClient";
-import { getSession } from "@/app/actions/auth";
+import { getSession } from "@/lib/session";
 import { redirect } from "next/navigation";
 
 export default async function TimetablePage() {
@@ -12,11 +13,12 @@ export default async function TimetablePage() {
     redirect("/login");
   }
 
-  const [classes, teachers, subjects, breaks] = await Promise.all([
+  const [classes, teachers, subjects, breaks, savedTimetable] = await Promise.all([
     getClasses(),
     getTeachers(),
     getSubjects(),
-    getBreaks()
+    getBreaks(),
+    getTimetable()
   ]);
 
   return (
@@ -32,6 +34,7 @@ export default async function TimetablePage() {
           teachers={teachers} 
           subjects={subjects} 
           customBreaks={breaks}
+          initialTimetable={savedTimetable}
         />
       </div>
     </div>
