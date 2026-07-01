@@ -140,8 +140,8 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
             if (matchedBreak) {
               newSchedule[`${cls.id}-${day}-${index}`] = { type: "BREAK", name: matchedBreak.name };
             } else {
-              let assignedSubject = null;
-              let assignedTeacher = null;
+              let assignedSubject: any = null;
+              let assignedTeacher: any = null;
 
               if (index === 0 && cls.classTeacherId) {
                 // First period of the day: Assign the Class Teacher
@@ -303,7 +303,7 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
           {viewMode === "class" && (
             <div className="space-y-1 animate-in fade-in zoom-in-95 duration-200">
               <Label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Select Class</Label>
-              <Select value={selectedClass} onValueChange={(val) => setSelectedClass(val)}>
+              <Select value={selectedClass} onValueChange={(val) => setSelectedClass(val || "")}>
                 <SelectTrigger className="w-48 rounded-[14px] bg-background">
                   <SelectValue placeholder="Select a class">
                     {classes.find(c => c.id === selectedClass) 
@@ -324,7 +324,7 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
           {viewMode === "teacher" && (
             <div className="space-y-1 animate-in fade-in zoom-in-95 duration-200">
               <Label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Select Teacher</Label>
-              <Select value={selectedTeacher} onValueChange={(val) => setSelectedTeacher(val)}>
+              <Select value={selectedTeacher} onValueChange={(val) => setSelectedTeacher(val || "")}>
                 <SelectTrigger className="w-48 rounded-[14px] bg-background">
                   <SelectValue placeholder="Select a teacher">
                     {teachers.find(t => t.id === selectedTeacher)?.name || "Select a teacher"}
@@ -343,7 +343,7 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
           {viewMode === "master" && (
             <div className="space-y-1 animate-in fade-in zoom-in-95 duration-200">
               <Label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Select Day</Label>
-              <Select value={selectedDay} onValueChange={(val) => setSelectedDay(val)}>
+              <Select value={selectedDay} onValueChange={(val) => setSelectedDay(val || "All Week")}>
                 <SelectTrigger className="w-48 rounded-[14px] bg-background">
                   <SelectValue placeholder="Select a day" />
                 </SelectTrigger>
