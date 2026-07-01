@@ -1,0 +1,99 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model School {
+  id           String    @id @default(uuid())
+  udiseCode    String    @unique
+  name         String
+  passwordHash String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  teachers     Teacher[]
+  subjects     Subject[]
+  classes      Class[]
+  rooms        Room[]
+  periods      Period[]
+}
+
+model Teacher {
+  id         String   @id @default(uuid())
+  schoolId   String
+  name       String
+  email      String   @unique
+  phone      String?
+  maxPeriods Int      @default(20)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  periods    Period[]
+
+  school     School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+}
+
+model Subject {
+  id        String   @id @default(uuid())
+  schoolId  String
+  name      String
+  code      String   @unique
+  type      String   // THEORY, LAB, SPORTS
+  color     String   @default("#004E64")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  periods   Period[]
+
+  school    School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+}
+
+model Class {
+  id        String   @id @default(uuid())
+  schoolId  String
+  name      String
+  division  String
+  capacity  Int      @default(40)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  periods   Period[]
+
+  school    School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+}
+
+model Room {
+  id        String   @id @default(uuid())
+  schoolId  String
+  name      String
+  capacity  Int      @default(40)
+  type      String   // CLASSROOM, LAB, LIBRARY, SPORTS
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  periods   Period[]
+
+  school    School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+}
+
+model Period {
+  id        String   @id @default(uuid())
+  schoolId  String
+  day       String   // MONDAY, TUESDAY...
+  startTime String
+  endTime   String
+  type      String   // CLASS, BREAK, LUNCH
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  teacherId String?
+  teacher   Teacher? @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  subjectId String?
+  subject   Subject? @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  classId   String?
+  class     Class?   @relation(fields: [classId], references: [id], onDelete: SetNull)
+  roomId    String?
+  room      Room?    @relation(fields: [roomId], references: [id], onDelete: SetNull)
+
+  school    School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+}
