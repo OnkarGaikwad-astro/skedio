@@ -157,88 +157,127 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
     setTimeout(() => {
       const newSchedule: Record<string, any> = {};
       
-      // Generate for all classes
-      classes.forEach(cls => {
-        DAYS.forEach((day) => {
-          let lastSubjectId: string | null = null; // Track the last subject assigned
-          let lastTeacherId: string | null = null; // Track the last teacher assigned
-
-          dynamicPeriods.forEach((time, index) => {
-            const matchedBreak = checkBreakOverlap(time, customBreaks);
-            
-            if (matchedBreak) {
+      const teacherWorkload: Record<string, number> = {};
+      teachers.forEach(t => teacherWorkload[t.id] = 0);
+      
+      const classSubjectTeacherMap: Record<string, Record<string, any>> = {};
+      classes.forEach(c => classSubjectTeacherMap[c.id] = {});
+      
+      DAYS.forEach((day) => {
+        dynamicPeriods.forEach((time, index) => {
+          const matchedBreak = checkBreakOverlap(time, customBreaks);
+          
+          if (matchedBreak) {
+            // Assign break to all classes at this time
+            classes.forEach(cls => {
               newSchedule[`${cls.id}-${day}-${index}`] = { type: "BREAK", name: matchedBreak.name };
-            } else {
-              let assignedSubject: any = null;
-              let assignedTeacher: any = null;
+            });
+            return;
+          }
+          
+          // Track which teachers are already teaching a class during this specific time slot
+          const busyTeachersAtSlot = new Set<string>();
 
-              if (index === 0 && cls.classTeacherId) {
-                // First period of the day: Assign the Class Teacher
-                assignedTeacher = teachers.find(t => t.id === cls.classTeacherId);
-                
-                if (assignedTeacher) {
-                  // If the teacher has specializations, restrict subjects to those specializations
-                  let validTeacherSubjects = assignedTeacher.subjectIds && assignedTeacher.subjectIds.length > 0
-                    ? subjects.filter(s => assignedTeacher.subjectIds.includes(s.id))
-                    : subjects;
+          classes.forEach(cls => {
+            let assignedSubject: any = null;
+            let assignedTeacher: any = null;
 
-                  // Further restrict subjects to those assigned to the class (if class has subjectIds)
-                  if (cls.subjectIds && cls.subjectIds.length > 0) {
-                    validTeacherSubjects = validTeacherSubjects.filter(s => cls.subjectIds.includes(s.id));
-                  }
-
-                  assignedSubject = validTeacherSubjects.length > 0
-                    ? validTeacherSubjects[Math.floor(Math.random() * validTeacherSubjects.length)]
-                    : null; // Class teacher cannot teach any of this class's subjects
-                }
-              }
+            // Determine available subjects for this class
+            let classAvailableSubjects = cls.subjectIds && cls.subjectIds.length > 0 
+              ? subjects.filter(s => cls.subjectIds.includes(s.id))
+              : subjects;
               
-              // If not first period, or Class Teacher assignment failed (or couldn't find a valid subject for the class teacher)
-              if (!assignedTeacher || !assignedSubject) {
-                // Determine available subjects for this class
-                let classAvailableSubjects = cls.subjectIds && cls.subjectIds.length > 0 
-                  ? subjects.filter(s => cls.subjectIds.includes(s.id))
-                  : subjects;
+            // Shuffle subjects to add randomness
+            classAvailableSubjects = [...classAvailableSubjects].sort(() => Math.random() - 0.5);
 
-                // Prevent consecutive subjects if there are multiple subjects available for the class
-                let availableSubjects = classAvailableSubjects;
-                if (lastSubjectId && classAvailableSubjects.length > 1) {
-                  const filtered = classAvailableSubjects.filter(s => s.id !== lastSubjectId);
-                  if (filtered.length > 0) {
-                    availableSubjects = filtered;
-                  }
-                }
-
-                assignedSubject = availableSubjects[Math.floor(Math.random() * availableSubjects.length)];
-                
-                const qualifiedTeachers = teachers.filter(t => 
-                  !t.subjectIds || t.subjectIds.length === 0 || t.subjectIds.includes(assignedSubject?.id)
+            // First period constraint: Try to assign the Class Teacher
+            if (index === 0 && cls.classTeacherId && !busyTeachersAtSlot.has(cls.classTeacherId)) {
+              const ct = teachers.find(t => t.id === cls.classTeacherId);
+              if (ct) {
+                let validCTSubjects = classAvailableSubjects.filter(s => 
+                  !ct.subjectIds || ct.subjectIds.length === 0 || ct.subjectIds.includes(s.id)
                 );
                 
-                let availableTeachers = qualifiedTeachers.length > 0 ? qualifiedTeachers : teachers;
-                
-                // Prevent consecutive teachers if there are multiple teachers available
-                if (lastTeacherId && availableTeachers.length > 1) {
-                  const filteredTeachers = availableTeachers.filter(t => t.id !== lastTeacherId);
-                  if (filteredTeachers.length > 0) {
-                    availableTeachers = filteredTeachers;
+                const mappedCTSubjects = validCTSubjects.filter(s => classSubjectTeacherMap[cls.id][s.id]?.id === ct.id);
+                if (mappedCTSubjects.length > 0) {
+                  assignedSubject = mappedCTSubjects[0];
+                  assignedTeacher = ct;
+                } else {
+                  const unmappedCTSubjects = validCTSubjects.filter(s => !classSubjectTeacherMap[cls.id][s.id]);
+                  if (unmappedCTSubjects.length > 0) {
+                    assignedSubject = unmappedCTSubjects[0];
+                    assignedTeacher = ct;
+                    classSubjectTeacherMap[cls.id][assignedSubject.id] = ct;
                   }
                 }
+              }
+            }
 
-                assignedTeacher = availableTeachers[Math.floor(Math.random() * availableTeachers.length)];
+            // Normal assignment
+            if (!assignedTeacher || !assignedSubject) {
+              // 1. Try to find a subject that is already mapped to a free teacher, avoiding consecutive periods
+              for (const subject of classAvailableSubjects) {
+                const mappedTeacher = classSubjectTeacherMap[cls.id][subject.id];
+                if (mappedTeacher && !busyTeachersAtSlot.has(mappedTeacher.id)) {
+                  const prevSlot = newSchedule[`${cls.id}-${day}-${index - 1}`];
+                  const isConsecutive = prevSlot && prevSlot.type === "CLASS" && prevSlot.subject?.id === subject.id;
+                  
+                  if (!isConsecutive) {
+                    assignedSubject = subject;
+                    assignedTeacher = mappedTeacher;
+                    break;
+                  }
+                }
+              }
+
+              // 2. If no mapped teacher is free (or only consecutive), try to map a NEW teacher to an unmapped subject
+              if (!assignedTeacher) {
+                const unmappedSubjects = classAvailableSubjects.filter(s => !classSubjectTeacherMap[cls.id][s.id]);
+                
+                for (const subject of unmappedSubjects) {
+                  const qualifiedTeachers = teachers.filter(t => 
+                    !t.subjectIds || t.subjectIds.length === 0 || t.subjectIds.includes(subject.id)
+                  );
+                  
+                  const availableTeachers = qualifiedTeachers.filter(t => !busyTeachersAtSlot.has(t.id));
+                  
+                  if (availableTeachers.length > 0) {
+                    // FAIRNESS: Sort by workload ascending
+                    availableTeachers.sort((a, b) => teacherWorkload[a.id] - teacherWorkload[b.id]);
+                    
+                    assignedSubject = subject;
+                    assignedTeacher = availableTeachers[0];
+                    classSubjectTeacherMap[cls.id][subject.id] = assignedTeacher;
+                    break;
+                  }
+                }
               }
               
-              if (assignedSubject && assignedTeacher) {
-                newSchedule[`${cls.id}-${day}-${index}`] = {
-                  type: "CLASS",
-                  subject: assignedSubject,
-                  teacher: assignedTeacher,
-                  classInfo: cls,
-                };
-                // Update last subject & teacher ID to prevent them from being picked next period
-                lastSubjectId = assignedSubject.id;
-                lastTeacherId = assignedTeacher.id;
+              // 3. Fallback: Allow consecutive period if mapped teacher is free
+              if (!assignedTeacher) {
+                for (const subject of classAvailableSubjects) {
+                  const mappedTeacher = classSubjectTeacherMap[cls.id][subject.id];
+                  if (mappedTeacher && !busyTeachersAtSlot.has(mappedTeacher.id)) {
+                    assignedSubject = subject;
+                    assignedTeacher = mappedTeacher;
+                    break;
+                  }
+                }
               }
+            }
+
+            if (assignedSubject && assignedTeacher) {
+              newSchedule[`${cls.id}-${day}-${index}`] = {
+                type: "CLASS",
+                subject: assignedSubject,
+                teacher: assignedTeacher,
+                classInfo: cls,
+              };
+              busyTeachersAtSlot.add(assignedTeacher.id);
+              teacherWorkload[assignedTeacher.id]++;
+            } else {
+              // Constraints could not be resolved -> Free Period
+              newSchedule[`${cls.id}-${day}-${index}`] = { type: "FREE" };
             }
           });
         });
