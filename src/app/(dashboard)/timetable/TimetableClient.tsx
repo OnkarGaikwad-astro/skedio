@@ -589,7 +589,7 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
                 {exportType === "class" && (
                   <div className="space-y-2 animate-in fade-in duration-300">
                     <Label>Select Class</Label>
-                    <Select value={exportEntityId} onValueChange={setExportEntityId}>
+                    <Select value={exportEntityId} onValueChange={(val) => setExportEntityId(val || "")}>
                       <SelectTrigger className="w-full rounded-[14px]">
                         <SelectValue placeholder="Select a class" />
                       </SelectTrigger>
@@ -605,7 +605,7 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
                 {exportType === "teacher" && (
                   <div className="space-y-2 animate-in fade-in duration-300">
                     <Label>Select Teacher</Label>
-                    <Select value={exportEntityId} onValueChange={setExportEntityId}>
+                    <Select value={exportEntityId} onValueChange={(val) => setExportEntityId(val || "")}>
                       <SelectTrigger className="w-full rounded-[14px]">
                         <SelectValue placeholder="Select a teacher" />
                       </SelectTrigger>
@@ -724,7 +724,7 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
 
           <div className="space-y-1">
             <Label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Slot Duration</Label>
-            <Select value={slotDuration} onValueChange={setSlotDuration}>
+            <Select value={slotDuration} onValueChange={(val) => setSlotDuration(val || "")}>
               <SelectTrigger className="w-36 rounded-[14px] bg-background">
                 <SelectValue placeholder="Duration" />
               </SelectTrigger>
