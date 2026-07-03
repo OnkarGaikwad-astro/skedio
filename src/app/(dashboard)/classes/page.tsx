@@ -2,6 +2,7 @@ import { getSession } from "@/lib/session";
 import { redirect } from "next/navigation";
 import { getClasses } from "@/app/actions/class";
 import { getTeachers } from "@/app/actions/teacher";
+import { getSubjects } from "@/app/actions/subject";
 import { ClassClient } from "./ClassClient";
 
 export default async function ClassesPage() {
@@ -12,6 +13,7 @@ export default async function ClassesPage() {
 
   const classes = await getClasses();
   const teachers = await getTeachers();
+  const subjects = await getSubjects();
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -21,7 +23,7 @@ export default async function ClassesPage() {
       </div>
 
       <div className="bg-card rounded-[20px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-border/50 p-6">
-        <ClassClient initialClasses={classes} teachers={teachers} />
+        <ClassClient initialClasses={classes} teachers={teachers} subjects={subjects} />
       </div>
     </div>
   );

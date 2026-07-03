@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { supabase } from "@/lib/supabase";
 import { getSession } from "@/lib/session";
 
-export async function createClass(data: { name: string; division: string; classTeacherId?: string }) {
+export async function createClass(data: { name: string; division: string; classTeacherId?: string; subjectIds?: string[] }) {
   const session = await getSession();
   if (!session?.schoolId) throw new Error("Unauthorized");
 
@@ -40,7 +40,7 @@ export async function getClasses() {
   return data;
 }
 
-export async function updateClass(id: string, data: { name: string; division: string; classTeacherId?: string }) {
+export async function updateClass(id: string, data: { name: string; division: string; classTeacherId?: string; subjectIds?: string[] }) {
   const session = await getSession();
   if (!session?.schoolId) throw new Error("Unauthorized");
 

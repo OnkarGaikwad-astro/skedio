@@ -29,6 +29,7 @@ model Teacher {
   email      String   @unique
   phone      String?
   maxPeriods Int      @default(20)
+  subjectIds String[] @default([])
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   periods    Period[]
@@ -51,16 +52,18 @@ model Subject {
 }
 
 model Class {
-  id        String   @id @default(uuid())
-  schoolId  String
-  name      String
-  division  String
-  capacity  Int      @default(40)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  periods   Period[]
+  id           String   @id @default(uuid())
+  schoolId     String
+  name         String
+  division     String
+  capacity     Int      @default(40)
+  classTeacherId String?
+  subjectIds   String[] @default([])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  periods      Period[]
 
-  school    School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  school       School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 }
 
 model Room {

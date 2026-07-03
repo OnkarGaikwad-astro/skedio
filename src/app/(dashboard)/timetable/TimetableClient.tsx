@@ -4,8 +4,9 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { Sparkles, Calendar as CalendarIcon, Download, SlidersHorizontal, RefreshCcw, Clock, Users, User, GraduationCap, FileDown } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 
 import { saveTimetable } from "@/app/actions/timetable";
 import { Break } from "@/app/actions/break";
@@ -105,21 +106,49 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
   const [isSaving, setIsSaving] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const [exportType, setExportType] = useState<"current" | "master" | "all-classes" | "class" | "teacher">("current");
+  const [exportEntityId, setExportEntityId] = useState<string>("");
+  
   const timetableRef = useRef<HTMLDivElement>(null);
   
   // Settings State - Load from initialTimetable if it exists
   const [schedule, setSchedule] = useState<Record<string, any>>(initialTimetable?.scheduleData || {});
-  const [startTime, setStartTime] = useState(initialTimetable?.settings?.startTime || "09:00");
-  const [endTime, setEndTime] = useState(initialTimetable?.settings?.endTime || "15:30");
-  const [slotDuration, setSlotDuration] = useState(initialTimetable?.settings?.slotDuration || "45");
+  const [startTime, setStartTime] = useState(initialTimetable?.settings?.startTime || "10:50");
+  const [endTime, setEndTime] = useState(initialTimetable?.settings?.endTime || "16:30");
+  const [slotDuration, setSlotDuration] = useState(initialTimetable?.settings?.slotDuration || "35");
 
   const dynamicPeriods = useMemo(() => {
     return generatePeriods(startTime, endTime, parseInt(slotDuration), customBreaks);
   }, [startTime, endTime, slotDuration, customBreaks]);
 
-  // If settings change, clear schedule to force regeneration
+  const prevSettings = useRef({ startTime, endTime, slotDuration });
+
+  // Sync state if initialTimetable prop changes (e.g., from server navigation)
   useEffect(() => {
-    setSchedule({});
+    if (initialTimetable?.scheduleData) {
+      setSchedule(initialTimetable.scheduleData);
+      const st = initialTimetable.settings?.startTime || "10:50";
+      const et = initialTimetable.settings?.endTime || "16:30";
+      const sd = initialTimetable.settings?.slotDuration || "35";
+      setStartTime(st);
+      setEndTime(et);
+      setSlotDuration(sd);
+      prevSettings.current = { startTime: st, endTime: et, slotDuration: sd };
+    }
+  }, [initialTimetable]);
+
+  // If settings actually change from user input, clear schedule to force regeneration
+  useEffect(() => {
+    const hasChanged = 
+      prevSettings.current.startTime !== startTime ||
+      prevSettings.current.endTime !== endTime ||
+      prevSettings.current.slotDuration !== slotDuration;
+
+    if (hasChanged) {
+      setSchedule({});
+      prevSettings.current = { startTime, endTime, slotDuration };
+    }
   }, [startTime, endTime, slotDuration]);
 
   const generateTimetable = () => {
@@ -148,24 +177,33 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
                 assignedTeacher = teachers.find(t => t.id === cls.classTeacherId);
                 
                 if (assignedTeacher) {
-                  // Try to pick one of their specialized subjects, otherwise pick random
-                  if (assignedTeacher.subjectIds && assignedTeacher.subjectIds.length > 0) {
-                    const validSubjects = subjects.filter(s => assignedTeacher.subjectIds.includes(s.id));
-                    assignedSubject = validSubjects.length > 0 
-                      ? validSubjects[Math.floor(Math.random() * validSubjects.length)] 
-                      : subjects[Math.floor(Math.random() * subjects.length)];
-                  } else {
-                    assignedSubject = subjects[Math.floor(Math.random() * subjects.length)];
+                  // If the teacher has specializations, restrict subjects to those specializations
+                  let validTeacherSubjects = assignedTeacher.subjectIds && assignedTeacher.subjectIds.length > 0
+                    ? subjects.filter(s => assignedTeacher.subjectIds.includes(s.id))
+                    : subjects;
+
+                  // Further restrict subjects to those assigned to the class (if class has subjectIds)
+                  if (cls.subjectIds && cls.subjectIds.length > 0) {
+                    validTeacherSubjects = validTeacherSubjects.filter(s => cls.subjectIds.includes(s.id));
                   }
+
+                  assignedSubject = validTeacherSubjects.length > 0
+                    ? validTeacherSubjects[Math.floor(Math.random() * validTeacherSubjects.length)]
+                    : null; // Class teacher cannot teach any of this class's subjects
                 }
               }
               
-              // If not first period, or Class Teacher assignment failed, do normal logic
+              // If not first period, or Class Teacher assignment failed (or couldn't find a valid subject for the class teacher)
               if (!assignedTeacher || !assignedSubject) {
-                // Prevent consecutive subjects if there are multiple subjects available
-                let availableSubjects = subjects;
-                if (lastSubjectId && subjects.length > 1) {
-                  const filtered = subjects.filter(s => s.id !== lastSubjectId);
+                // Determine available subjects for this class
+                let classAvailableSubjects = cls.subjectIds && cls.subjectIds.length > 0 
+                  ? subjects.filter(s => cls.subjectIds.includes(s.id))
+                  : subjects;
+
+                // Prevent consecutive subjects if there are multiple subjects available for the class
+                let availableSubjects = classAvailableSubjects;
+                if (lastSubjectId && classAvailableSubjects.length > 1) {
+                  const filtered = classAvailableSubjects.filter(s => s.id !== lastSubjectId);
                   if (filtered.length > 0) {
                     availableSubjects = filtered;
                   }
@@ -225,8 +263,206 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
     }
   };
 
-  const exportToPDF = () => {
-    window.print();
+  const exportToPDF = async () => {
+    setIsExportDialogOpen(false);
+    setIsExporting(true);
+
+    try {
+      setIsExporting(true);
+
+      const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+
+      const customDrawCell = (data: any) => {
+        const pdfDoc = data.doc;
+        if (data.section === 'body') {
+          const x = data.cell.x + 1;
+          const y = data.cell.y + 1;
+          const w = data.cell.width - 2;
+          const h = data.cell.height - 2;
+          const cx = data.cell.x + data.cell.width / 2;
+          const cy = data.cell.y + data.cell.height / 2;
+
+          const customData = data.cell.raw?.customData || {};
+
+          if (data.column.index === 0) {
+            pdfDoc.setFillColor(248, 250, 252);
+            pdfDoc.setDrawColor(226, 232, 240);
+            pdfDoc.setLineWidth(0.3);
+            pdfDoc.roundedRect(x, y, w, h, 2, 2, "FD");
+            pdfDoc.setFont("helvetica", "bold");
+            pdfDoc.setFontSize(9);
+            pdfDoc.setTextColor(100, 116, 139);
+            pdfDoc.text(customData.name || data.cell.text[0] || "", cx, cy, { align: "center", baseline: "middle" });
+          } else {
+            if (customData.type === 'break') {
+              pdfDoc.setFillColor(248, 250, 252);
+              pdfDoc.setDrawColor(226, 232, 240);
+              pdfDoc.setLineWidth(0.3);
+              pdfDoc.roundedRect(x, y, w, h, 2, 2, "FD");
+              pdfDoc.setFont("helvetica", "bold");
+              pdfDoc.setFontSize(9);
+              pdfDoc.setTextColor(148, 163, 184);
+              pdfDoc.text(customData.name || "", cx, cy, { align: "center", baseline: "middle" });
+            } else if (customData.type === 'slot') {
+              pdfDoc.setFillColor(240, 249, 255);
+              pdfDoc.setDrawColor(186, 232, 253);
+              pdfDoc.setLineWidth(0.3);
+              pdfDoc.roundedRect(x, y, w, h, 2, 2, "FD");
+              pdfDoc.setFont("helvetica", "bold");
+              pdfDoc.setFontSize(9);
+              pdfDoc.setTextColor(15, 23, 42);
+              pdfDoc.text(customData.subject || "", cx, cy - 1.5, { align: "center", baseline: "middle" });
+              pdfDoc.setFont("helvetica", "normal");
+              pdfDoc.setFontSize(7.5);
+              pdfDoc.setTextColor(100, 116, 139);
+              pdfDoc.text(customData.subtitle || "", cx, cy + 2.5, { align: "center", baseline: "middle" });
+            } else {
+              pdfDoc.setDrawColor(241, 245, 249);
+              pdfDoc.setLineWidth(0.3);
+              pdfDoc.roundedRect(x, y, w, h, 2, 2, "S");
+              pdfDoc.setFont("helvetica", "normal");
+              pdfDoc.setFontSize(8);
+              pdfDoc.setTextColor(203, 213, 225);
+              pdfDoc.text("Free", cx, cy, { align: "center", baseline: "middle" });
+            }
+          }
+        }
+      };
+
+      const tableStyles = {
+        theme: 'grid' as const,
+        styles: { font: 'helvetica', fontSize: 10, cellPadding: 3, halign: 'center' as const, valign: 'middle' as const, lineWidth: 0, fillColor: [255, 255, 255] as [number, number, number] },
+        headStyles: { fillColor: [0, 78, 100] as [number, number, number], textColor: 255, fontStyle: 'bold' as const },
+        alternateRowStyles: { fillColor: [255, 255, 255] as [number, number, number] },
+        bodyStyles: { fillColor: [255, 255, 255] as [number, number, number] },
+        didDrawCell: customDrawCell
+      };
+
+      const generateTableForClass = (classData: any, startY: number = 20) => {
+        pdf.setFontSize(16);
+        pdf.text(`Timetable - Class ${classData.name} ${classData.division}`, pageWidth / 2, startY, { align: "center" });
+
+        const body: any[] = [];
+        dynamicPeriods.forEach((time, index) => {
+          const timeCell = { content: "\n", customData: { type: 'time', name: time } };
+          const b = checkBreakOverlap(time, customBreaks);
+          if (b) {
+            body.push([timeCell, { content: "\n", colSpan: 5, customData: { type: 'break', name: b.name.toUpperCase() } }]);
+            return;
+          }
+
+          const row = [timeCell];
+          DAYS.forEach(day => {
+            const slot = schedule[`${classData.id}-${day}-${index}`];
+            if (slot && slot.type === "CLASS") {
+              row.push({ content: "\n", customData: { type: 'slot', subject: slot.subject?.name || '', subtitle: slot.teacher?.name || '' } });
+            } else {
+              row.push({ content: "\n", customData: { type: 'free' } });
+            }
+          });
+          body.push(row);
+        });
+        autoTable(pdf, { head: [["Time", ...DAYS]], body, startY: startY + 10, ...tableStyles });
+      };
+
+      const generateTableForTeacher = (teacherData: any, startY: number = 20) => {
+        pdf.setFontSize(16);
+        pdf.text(`Timetable - Teacher: ${teacherData.name}`, pageWidth / 2, startY, { align: "center" });
+
+        const body: any[] = [];
+        dynamicPeriods.forEach((time, index) => {
+          const timeCell = { content: "\n", customData: { type: 'time', name: time } };
+          const b = checkBreakOverlap(time, customBreaks);
+          if (b) {
+            body.push([timeCell, { content: "\n", colSpan: 5, customData: { type: 'break', name: b.name.toUpperCase() } }]);
+            return;
+          }
+
+          const row = [timeCell];
+          DAYS.forEach(day => {
+            const slot = getTeacherSlot(teacherData.id, day, index);
+            if (slot && slot.type === "CLASS") {
+              row.push({ content: "\n", customData: { type: 'slot', subject: slot.subject?.name || '', subtitle: `Class: ${slot.classInfo?.name || ''} ${slot.classInfo?.division || ''}` } });
+            } else {
+              row.push({ content: "\n", customData: { type: 'free' } });
+            }
+          });
+          body.push(row);
+        });
+        autoTable(pdf, { head: [["Time", ...DAYS]], body, startY: startY + 10, ...tableStyles });
+      };
+
+      const generateTableForMaster = (day: string, startY: number = 20) => {
+        pdf.setFontSize(16);
+        pdf.text(`Master Timetable - ${day}`, pageWidth / 2, startY, { align: "center" });
+
+        const body: any[] = [];
+        dynamicPeriods.forEach((time, index) => {
+          const timeCell = { content: "\n", customData: { type: 'time', name: time } };
+          const b = checkBreakOverlap(time, customBreaks);
+          if (b) {
+            body.push([timeCell, { content: "\n", colSpan: teachers.length, customData: { type: 'break', name: b.name.toUpperCase() } }]);
+            return;
+          }
+
+          const row = [timeCell];
+          teachers.forEach(teacher => {
+            const slot = getTeacherSlot(teacher.id, day, index);
+            if (slot && slot.type === "CLASS") {
+              row.push({ content: "\n", customData: { type: 'slot', subject: slot.subject?.name || '', subtitle: `Class: ${slot.classInfo?.name || ''} ${slot.classInfo?.division || ''}` } });
+            } else {
+              row.push({ content: "\n", customData: { type: 'free' } });
+            }
+          });
+          body.push(row);
+        });
+        autoTable(pdf, { head: [["Time", ...teachers.map(t => t.name)]], body, startY: startY + 10, ...tableStyles });
+      };
+
+      let activeExportType = exportType;
+      let activeEntityId = exportEntityId;
+
+      if (exportType === "current") {
+        activeExportType = viewMode;
+        if (viewMode === "class") activeEntityId = selectedClass;
+        if (viewMode === "teacher") activeEntityId = selectedTeacher;
+      }
+
+      if (activeExportType === "master") {
+        if (teachers.length === 0) throw new Error("No teachers available");
+        const daysToExport = selectedDay === "All Week" ? DAYS : [selectedDay];
+        daysToExport.forEach((day, idx) => {
+          if (idx > 0) pdf.addPage();
+          generateTableForMaster(day, 20);
+        });
+      } else if (activeExportType === "all-classes") {
+        if (classes.length === 0) throw new Error("No classes available");
+        classes.forEach((c, idx) => {
+          if (idx > 0) pdf.addPage();
+          generateTableForClass(c, 20);
+        });
+      } else if (activeExportType === "class") {
+        const c = classes.find(c => c.id === activeEntityId);
+        if (!c) throw new Error("Class not found");
+        generateTableForClass(c, 20);
+      } else if (activeExportType === "teacher") {
+        const t = teachers.find(t => t.id === activeEntityId);
+        if (!t) throw new Error("Teacher not found");
+        generateTableForTeacher(t, 20);
+      }
+
+      const filename = exportType === "current" 
+        ? `timetable_${viewMode}.pdf` 
+        : `timetable_${exportType}.pdf`;
+      
+      pdf.save(filename);
+    } catch (error) {
+      console.error("PDF Export Error:", error);
+      alert("Failed to export PDF.");
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   // Helper to find a teacher's class for a specific day and period
@@ -277,13 +513,81 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
           </button>
           
           <button 
-            onClick={exportToPDF}
+            onClick={() => setIsExportDialogOpen(true)}
             disabled={isExporting || Object.keys(schedule).length === 0}
             className="h-10 px-5 rounded-[14px] bg-secondary text-secondary-foreground hover:bg-secondary/90 transition-all flex items-center gap-2 text-sm font-medium shadow-sm disabled:opacity-50"
           >
             {isExporting ? <RefreshCcw size={16} className="animate-spin" /> : <FileDown size={16} />}
             Export PDF
           </button>
+
+          <Dialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen}>
+            <DialogContent className="sm:max-w-[425px] rounded-[20px]">
+              <DialogHeader>
+                <DialogTitle className="font-heading text-xl">Export Timetable</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 mt-4">
+                <div className="space-y-2">
+                  <Label>What would you like to export?</Label>
+                  <Select value={exportType} onValueChange={(val: any) => {
+                    setExportType(val);
+                    if (val === "class" && classes.length > 0) setExportEntityId(classes[0].id);
+                    if (val === "teacher" && teachers.length > 0) setExportEntityId(teachers[0].id);
+                  }}>
+                    <SelectTrigger className="w-full rounded-[14px]">
+                      <SelectValue placeholder="Select type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="current">Current View</SelectItem>
+                      <SelectItem value="master">Master Schedule (All Teachers)</SelectItem>
+                      <SelectItem value="all-classes">All Classes</SelectItem>
+                      <SelectItem value="class">Specific Class</SelectItem>
+                      <SelectItem value="teacher">Specific Teacher</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                {exportType === "class" && (
+                  <div className="space-y-2 animate-in fade-in duration-300">
+                    <Label>Select Class</Label>
+                    <Select value={exportEntityId} onValueChange={setExportEntityId}>
+                      <SelectTrigger className="w-full rounded-[14px]">
+                        <SelectValue placeholder="Select a class" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {classes.map(c => (
+                          <SelectItem key={c.id} value={c.id}>{c.name} {c.division}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                
+                {exportType === "teacher" && (
+                  <div className="space-y-2 animate-in fade-in duration-300">
+                    <Label>Select Teacher</Label>
+                    <Select value={exportEntityId} onValueChange={setExportEntityId}>
+                      <SelectTrigger className="w-full rounded-[14px]">
+                        <SelectValue placeholder="Select a teacher" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {teachers.map(t => (
+                          <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                <button
+                  onClick={exportToPDF}
+                  className="w-full bg-primary text-primary-foreground py-2.5 rounded-[14px] text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm mt-2"
+                >
+                  Download PDF
+                </button>
+              </div>
+            </DialogContent>
+          </Dialog>
 
           <button 
             onClick={handleSave}
@@ -387,9 +691,11 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="30">30 mins</SelectItem>
+                <SelectItem value="35">35 mins</SelectItem>
                 <SelectItem value="40">40 mins</SelectItem>
                 <SelectItem value="45">45 mins</SelectItem>
                 <SelectItem value="50">50 mins</SelectItem>
+                <SelectItem value="55">55 mins</SelectItem>
                 <SelectItem value="60">60 mins</SelectItem>
               </SelectContent>
             </Select>
@@ -398,7 +704,7 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
       </div>
 
       {/* Grid Container */}
-      <div className="flex-1 overflow-auto rounded-[18px] border border-border/50 bg-background/50 relative snap-y snap-mandatory">
+      <div id="timetable-container" className="flex-1 overflow-auto rounded-[18px] border border-border/50 bg-background/50 relative snap-y snap-mandatory bg-white dark:bg-zinc-950 pb-8">
         {Object.keys(schedule).length === 0 ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground animate-in fade-in duration-1000">
             <div className="w-20 h-20 bg-primary/5 rounded-full flex items-center justify-center mb-4">
@@ -415,12 +721,15 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
               <div className="grid gap-3 h-full" style={{ gridTemplateColumns: `100px repeat(${DAYS.length}, minmax(180px, 1fr))` }}>
                 <div className="space-y-3">
                   <div className="h-12 flex items-end justify-center pb-2 text-sm font-medium text-muted-foreground border-b border-border/50">Time</div>
-                  {dynamicPeriods.map(time => (
-                    <div key={time} className="h-20 flex items-center justify-center text-xs font-semibold text-muted-foreground/80 bg-muted/30 rounded-[14px] border border-border/30">
-                      <Clock size={12} className="mr-1.5 opacity-50" />
-                      {time}
-                    </div>
-                  ))}
+                  {dynamicPeriods.map(time => {
+                    const isBreak = checkBreakOverlap(time, customBreaks);
+                    return (
+                      <div key={time} className={`${isBreak ? "h-24" : "h-20"} flex items-center justify-center text-xs font-semibold text-muted-foreground/80 bg-muted/30 rounded-[14px] border border-border/30`}>
+                        <Clock size={12} className="mr-1.5 opacity-50" />
+                        {time}
+                      </div>
+                    )
+                  })}
                 </div>
                 {DAYS.map(day => (
                   <div key={day} className="space-y-3">
@@ -431,9 +740,8 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
                       if (checkBreakOverlap(time, customBreaks)) {
                         const b = checkBreakOverlap(time, customBreaks);
                         return (
-                          <div key={index} className="h-20 bg-sidebar-primary/10 rounded-[14px] border border-sidebar-primary/20 flex items-center justify-center relative overflow-hidden group">
-                            <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/diagonal-stripes.png')] opacity-10"></div>
-                            <span className="text-sidebar-primary font-heading font-semibold tracking-widest uppercase text-sm relative z-10">{b?.name}</span>
+                          <div key={index} className="h-24 bg-muted/50 rounded-[14px] flex items-center justify-center relative overflow-hidden group">
+                            <span className="bg-background/95 px-5 py-2 rounded-full border border-border text-foreground font-heading font-bold tracking-[0.2em] uppercase text-sm relative z-10 shadow-sm backdrop-blur-md">{b?.name}</span>
                           </div>
                         )
                       }
@@ -464,12 +772,15 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
               <div className="grid gap-3 h-full" style={{ gridTemplateColumns: `100px repeat(${DAYS.length}, minmax(180px, 1fr))` }}>
                 <div className="space-y-3">
                   <div className="h-12 flex items-end justify-center pb-2 text-sm font-medium text-muted-foreground border-b border-border/50">Time</div>
-                  {dynamicPeriods.map(time => (
-                    <div key={time} className="h-20 flex items-center justify-center text-xs font-semibold text-muted-foreground/80 bg-muted/30 rounded-[14px] border border-border/30">
-                      <Clock size={12} className="mr-1.5 opacity-50" />
-                      {time}
-                    </div>
-                  ))}
+                  {dynamicPeriods.map(time => {
+                    const isBreak = checkBreakOverlap(time, customBreaks);
+                    return (
+                      <div key={time} className={`${isBreak ? "h-24" : "h-20"} flex items-center justify-center text-xs font-semibold text-muted-foreground/80 bg-muted/30 rounded-[14px] border border-border/30`}>
+                        <Clock size={12} className="mr-1.5 opacity-50" />
+                        {time}
+                      </div>
+                    )
+                  })}
                 </div>
                 {DAYS.map(day => (
                   <div key={day} className="space-y-3">
@@ -478,9 +789,8 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
                       if (checkBreakOverlap(time, customBreaks)) {
                         const b = checkBreakOverlap(time, customBreaks);
                         return (
-                          <div key={index} className="h-20 bg-sidebar-primary/10 rounded-[14px] border border-sidebar-primary/20 flex items-center justify-center relative overflow-hidden group">
-                            <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/diagonal-stripes.png')] opacity-10"></div>
-                            <span className="text-sidebar-primary font-heading font-semibold tracking-widest uppercase text-sm relative z-10">{b?.name}</span>
+                          <div key={index} className="h-24 bg-muted/50 rounded-[14px] flex items-center justify-center relative overflow-hidden group">
+                            <span className="bg-background/95 px-5 py-2 rounded-full border border-border text-foreground font-heading font-bold tracking-[0.2em] uppercase text-sm relative z-10 shadow-sm backdrop-blur-md">{b?.name}</span>
                           </div>
                         )
                       }
@@ -523,12 +833,15 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
                     <div className="grid gap-3" style={{ gridTemplateColumns: `100px repeat(${teachers.length}, minmax(180px, 1fr))` }}>
                       <div className="space-y-3">
                         <div className="h-12 flex items-end justify-center pb-2 text-sm font-medium text-muted-foreground border-b border-border/50">Time</div>
-                        {dynamicPeriods.map(time => (
-                          <div key={time} className="h-20 flex items-center justify-center text-xs font-semibold text-muted-foreground/80 bg-muted/30 rounded-[14px] border border-border/30">
-                            <Clock size={12} className="mr-1.5 opacity-50" />
-                            {time}
-                          </div>
-                        ))}
+                        {dynamicPeriods.map(time => {
+                          const isBreak = checkBreakOverlap(time, customBreaks);
+                          return (
+                            <div key={time} className={`${isBreak ? "h-24" : "h-20"} flex items-center justify-center text-xs font-semibold text-muted-foreground/80 bg-muted/30 rounded-[14px] border border-border/30`}>
+                              <Clock size={12} className="mr-1.5 opacity-50" />
+                              {time}
+                            </div>
+                          )
+                        })}
                       </div>
                       {teachers.map(teacher => (
                         <div key={teacher.id} className="space-y-3">
@@ -539,8 +852,8 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
                             if (checkBreakOverlap(time, customBreaks)) {
                               const b = checkBreakOverlap(time, customBreaks);
                               return (
-                                <div key={index} className="h-20 bg-sidebar-primary/5 rounded-[14px] border border-sidebar-primary/10 flex items-center justify-center relative overflow-hidden group">
-                                  <span className="text-sidebar-primary/50 font-heading tracking-widest uppercase text-xs relative z-10">{b?.name}</span>
+                                <div key={index} className="h-24 bg-muted/50 rounded-[14px] flex items-center justify-center relative overflow-hidden group">
+                                  <span className="bg-background/95 px-5 py-2 rounded-full border border-border text-foreground font-heading font-bold tracking-[0.2em] uppercase text-xs relative z-10 shadow-sm backdrop-blur-md">{b?.name}</span>
                                 </div>
                               )
                             }

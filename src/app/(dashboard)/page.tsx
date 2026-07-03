@@ -2,6 +2,9 @@ import { Users, BookOpen, Presentation, Clock, CalendarDays, TrendingUp } from "
 import { getSession } from "@/lib/session";
 import { supabase } from "@/lib/supabase";
 import { redirect } from "next/navigation";
+import { getTimetable } from "@/app/actions/timetable";
+import { getBreaks } from "@/app/actions/break";
+import { DashboardTimetablePreview } from "@/components/dashboard/DashboardTimetablePreview";
 
 export default async function DashboardPage() {
   const session = await getSession();
@@ -9,19 +12,42 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
-  // Get counts for the school
-  const [{ count: teachersCount }, { count: classesCount }, { count: subjectsCount }] = await Promise.all([
+  const [{ count: teachersCount }, { count: classesCount }, { count: subjectsCount }, { data: teachers }, { data: classes }] = await Promise.all([
     supabase.from("Teacher").select("*", { count: "exact", head: true }).eq("schoolId", session.schoolId),
     supabase.from("Class").select("*", { count: "exact", head: true }).eq("schoolId", session.schoolId),
     supabase.from("Subject").select("*", { count: "exact", head: true }).eq("schoolId", session.schoolId),
+    supabase.from("Teacher").select("*").eq("schoolId", session.schoolId).order("name", { ascending: true }),
+    supabase.from("Class").select("*").eq("schoolId", session.schoolId).order("name", { ascending: true }),
   ]);
+
+  const [timetableData, customBreaks] = await Promise.all([
+    getTimetable(),
+    getBreaks()
+  ]);
+
+  let activeTeachers = new Set();
+  let scheduledClasses = new Set();
+  let taughtSubjects = new Set();
+  let totalLectures = 0;
+
+  if (timetableData?.scheduleData) {
+    Object.entries(timetableData.scheduleData).forEach(([key, slot]: [string, any]) => {
+      if (slot && slot.type === "CLASS") {
+        totalLectures++;
+        if (slot.teacher?.id) activeTeachers.add(slot.teacher.id);
+        if (slot.subject?.id) taughtSubjects.add(slot.subject.id);
+        const classId = key.split('-')[0];
+        scheduledClasses.add(classId);
+      }
+    });
+  }
 
   const stats = [
     {
       name: "Total Teachers",
       value: (teachersCount || 0).toString(),
       icon: Users,
-      trend: "+2 this month",
+      trend: timetableData ? `${activeTeachers.size} scheduled` : "No schedule",
       color: "text-blue-700 dark:text-blue-300",
       bg: "bg-blue-500/30",
       ring: "ring-blue-500/40",
@@ -34,7 +60,7 @@ export default async function DashboardPage() {
       name: "Total Classes",
       value: (classesCount || 0).toString(),
       icon: Presentation,
-      trend: "No changes",
+      trend: timetableData ? `${scheduledClasses.size} scheduled` : "No schedule",
       color: "text-violet-700 dark:text-violet-300",
       bg: "bg-violet-500/30",
       ring: "ring-violet-500/40",
@@ -47,7 +73,7 @@ export default async function DashboardPage() {
       name: "Total Subjects",
       value: (subjectsCount || 0).toString(),
       icon: BookOpen,
-      trend: "+1 this month",
+      trend: timetableData ? `${taughtSubjects.size} taught` : "No schedule",
       color: "text-emerald-700 dark:text-emerald-300",
       bg: "bg-emerald-500/30",
       ring: "ring-emerald-500/40",
@@ -57,10 +83,10 @@ export default async function DashboardPage() {
       cardShadow: "hover:shadow-[0_8px_30px_rgb(16,185,129,0.25)]",
     },
     {
-      name: "Active Periods",
-      value: "35",
+      name: "Weekly Lectures",
+      value: totalLectures.toString(),
       icon: Clock,
-      trend: "Currently running",
+      trend: "Total slots filled",
       color: "text-amber-700 dark:text-amber-300",
       bg: "bg-amber-500/30",
       ring: "ring-amber-500/40",
@@ -117,36 +143,13 @@ export default async function DashboardPage() {
         })}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="group relative overflow-hidden rounded-[24px] border border-blue-400/60 dark:border-blue-700/60 bg-blue-500/15 dark:bg-blue-900/30 p-6 shadow-sm backdrop-blur-2xl transition-all duration-500 hover:-translate-y-1.5 hover:border-blue-500 hover:shadow-[0_8px_30px_rgb(59,130,246,0.25)]">
-          <div className="absolute right-0 bottom-0 -mr-16 -mb-16 h-48 w-48 rounded-full transition-transform duration-700 group-hover:scale-[1.5] bg-blue-500/20 blur-3xl z-0" />
-          <div className="relative z-10">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="rounded-xl bg-blue-500/30 p-2 text-blue-700 dark:text-blue-300 ring-1 ring-blue-500/40 shadow-inner backdrop-blur-md">
-                <CalendarDays className="h-4 w-4" />
-              </div>
-              <h3 className="font-semibold text-foreground">Recent Activity</h3>
-            </div>
-            <div className="flex h-[200px] items-center justify-center rounded-xl border border-blue-400/30 dark:border-blue-700/40 bg-blue-500/10 backdrop-blur-md shadow-inner">
-              <p className="text-sm font-medium text-blue-800 dark:text-blue-300">No recent activity to show.</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="group relative overflow-hidden rounded-[24px] border border-emerald-400/60 dark:border-emerald-700/60 bg-emerald-500/15 dark:bg-emerald-900/30 p-6 shadow-sm backdrop-blur-2xl transition-all duration-500 hover:-translate-y-1.5 hover:border-emerald-500 hover:shadow-[0_8px_30px_rgb(16,185,129,0.25)]">
-          <div className="absolute right-0 bottom-0 -mr-16 -mb-16 h-48 w-48 rounded-full transition-transform duration-700 group-hover:scale-[1.5] bg-emerald-500/20 blur-3xl z-0" />
-          <div className="relative z-10">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="rounded-xl bg-emerald-500/30 p-2 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/40 shadow-inner backdrop-blur-md">
-                <TrendingUp className="h-4 w-4" />
-              </div>
-              <h3 className="font-semibold text-foreground">Scheduling Efficiency</h3>
-            </div>
-            <div className="flex h-[200px] items-center justify-center rounded-xl border border-emerald-400/30 dark:border-emerald-700/40 bg-emerald-500/10 backdrop-blur-md shadow-inner">
-              <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300">Generate a timetable to see analytics.</p>
-            </div>
-          </div>
-        </div>
+      <div className="grid gap-6 grid-cols-1">
+        <DashboardTimetablePreview 
+          teachers={teachers || []} 
+          classes={classes || []}
+          timetableData={timetableData} 
+          customBreaks={customBreaks || []}
+        />
       </div>
     </div>
   );

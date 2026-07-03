@@ -22,7 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-export function ClassClient({ initialClasses, teachers }: { initialClasses: any[], teachers: any[] }) {
+export function ClassClient({ initialClasses, teachers, subjects }: { initialClasses: any[], teachers: any[], subjects: any[] }) {
   const [classes, setClasses] = useState(initialClasses);
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -30,14 +30,17 @@ export function ClassClient({ initialClasses, teachers }: { initialClasses: any[
   // Edit State
   const [editingClass, setEditingClass] = useState<any | null>(null);
   const [selectedClassTeacher, setSelectedClassTeacher] = useState<string>("none");
+  const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
 
   const handleOpenDialog = (cls?: any) => {
     if (cls) {
       setEditingClass(cls);
       setSelectedClassTeacher(cls.classTeacherId || "none");
+      setSelectedSubjects(cls.subjectIds || []);
     } else {
       setEditingClass(null);
       setSelectedClassTeacher("none");
+      setSelectedSubjects([]);
     }
     setIsOpen(true);
   };
@@ -53,10 +56,10 @@ export function ClassClient({ initialClasses, teachers }: { initialClasses: any[
 
     try {
       if (editingClass) {
-        const updated = await updateClass(editingClass.id, { name, division, classTeacherId });
+        const updated = await updateClass(editingClass.id, { name, division, classTeacherId, subjectIds: selectedSubjects });
         setClasses(classes.map(c => c.id === updated.id ? updated : c));
       } else {
-        const newClass = await createClass({ name, division, classTeacherId });
+        const newClass = await createClass({ name, division, classTeacherId, subjectIds: selectedSubjects });
         setClasses([newClass, ...classes]);
       }
       setIsOpen(false);
@@ -76,6 +79,14 @@ export function ClassClient({ initialClasses, teachers }: { initialClasses: any[
       console.error(err);
     }
   }
+
+  const toggleSubject = (id: string) => {
+    if (selectedSubjects.includes(id)) {
+      setSelectedSubjects(selectedSubjects.filter(sid => sid !== id));
+    } else {
+      setSelectedSubjects([...selectedSubjects, id]);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -120,6 +131,27 @@ export function ClassClient({ initialClasses, teachers }: { initialClasses: any[
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="space-y-2 pt-2 border-t border-border/50">
+                <Label>Class Subjects</Label>
+                <p className="text-[11px] text-muted-foreground mb-2">Select the subjects taught in this class. The AI generator will only assign these subjects.</p>
+                <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto p-1">
+                  {subjects.map(subject => (
+                    <label key={subject.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted/50 p-1.5 rounded-lg border border-transparent hover:border-border/50 transition-colors">
+                      <input 
+                        type="checkbox" 
+                        checked={selectedSubjects.includes(subject.id)}
+                        onChange={() => toggleSubject(subject.id)}
+                        className="rounded border-border text-primary focus:ring-primary/50"
+                      />
+                      <span className="truncate" title={subject.name}>{subject.name}</span>
+                    </label>
+                  ))}
+                  {subjects.length === 0 && (
+                    <div className="col-span-2 text-xs text-muted-foreground py-2 italic">No subjects available. Please add subjects first.</div>
+                  )}
+                </div>
               </div>
 
               <button
