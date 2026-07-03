@@ -25,7 +25,8 @@ export async function registerSchool(formData: FormData) {
     return { error: "A school with this UDISE code is already registered." };
   }
 
-  const passwordHash = await bcrypt.hash(password, 10);
+  const passwordHash = password;
+  // const passwordHash = await bcrypt.hash(password, 10);
 
   // Insert into Supabase
   const { data: newSchool, error } = await supabase
@@ -63,7 +64,8 @@ export async function loginSchool(formData: FormData) {
     return { error: "Invalid UDISE code or password." };
   }
 
-  const isPasswordValid = await bcrypt.compare(password, school.passwordHash);
+  const isPasswordValid = password === school.passwordHash;
+  // const isPasswordValid = await bcrypt.compare(password, school.passwordHash);
 
   if (!isPasswordValid) {
     return { error: "Invalid UDISE code or password." };
