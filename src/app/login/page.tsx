@@ -33,7 +33,7 @@ export default function LoginPage() {
       <div className="w-full max-w-[400px] z-10">
         <div className="mb-8 text-center">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-[24px] bg-white shadow-sm border border-border/50 mb-6">
-            <School className="w-8 h-8 text-primary" />
+            <img src="/logo.png" alt="Skedio Logo" className="w-8 h-8 rounded-lg" />
           </div>
           <h1 className="text-3xl font-semibold tracking-tight text-slate-900 mb-2">Welcome to Skedio</h1>
           <p className="text-slate-500 text-sm">Sign in with your School UDISE code</p>

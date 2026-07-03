@@ -17,6 +17,8 @@ import {
   ChevronRight,
 } from "lucide-react";
 
+import { X } from "lucide-react";
+
 const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Timetable", href: "/timetable", icon: CalendarDays },
@@ -28,7 +30,7 @@ const navigation = [
   { name: "Settings", href: "/settings", icon: Settings },
 ];
 
-export function Sidebar() {
+export function Sidebar({ user, onClose, isMobileOpen }: { user?: any, onClose?: () => void, isMobileOpen?: boolean }) {
   const pathname = usePathname();
   const [isExpanded, setIsExpanded] = useState(true);
 
@@ -41,16 +43,29 @@ export function Sidebar() {
       <div className="overflow-hidden h-full flex flex-col">
         <div className="h-16 flex items-center px-4 justify-between border-b border-sidebar-border shrink-0">
           {isExpanded && (
-            <span className="font-heading font-bold text-2xl text-sidebar-primary tracking-wide ml-1">
-              Skedio
-            </span>
+            <div className="flex items-center gap-2 ml-1">
+              <img src="/logo.png" alt="Skedio Logo" className="w-7 h-7 rounded-md" />
+              <span className="font-heading font-bold text-2xl text-sidebar-primary tracking-wide">
+                Skedio
+              </span>
+            </div>
           )}
-          <button
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="p-1.5 rounded-lg hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors mx-auto text-sidebar-foreground/70"
-          >
-            {isExpanded ? <ChevronLeft size={20} /> : <ChevronRight size={20} />}
-          </button>
+          <div className="hidden md:block">
+            <button
+              onClick={() => setIsExpanded(!isExpanded)}
+              className="p-1.5 rounded-lg hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors mx-auto text-sidebar-foreground/70"
+            >
+              {isExpanded ? <ChevronLeft size={20} /> : <ChevronRight size={20} />}
+            </button>
+          </div>
+          {isMobileOpen && onClose && (
+            <button
+              onClick={onClose}
+              className="md:hidden p-1.5 rounded-lg hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors text-sidebar-foreground/70"
+            >
+              <X size={20} />
+            </button>
+          )}
         </div>
         
         <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-hide py-4">
@@ -86,13 +101,13 @@ export function Sidebar() {
       {/* Profile Section */}
       <div className="p-4 border-t border-sidebar-border shrink-0 overflow-hidden">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-sidebar-primary flex items-center justify-center text-sidebar-primary-foreground font-bold shrink-0 shadow-sm">
-            A
+          <div className="w-10 h-10 rounded-full bg-sidebar-primary flex items-center justify-center text-sidebar-primary-foreground font-bold shrink-0 shadow-sm uppercase">
+            {user?.name ? user.name.charAt(0) : "S"}
           </div>
           {isExpanded && (
             <div className="overflow-hidden">
-              <p className="text-sm font-medium truncate">Admin User</p>
-              <p className="text-xs opacity-80 truncate">admin@skedio.app</p>
+              <p className="text-sm font-medium truncate">{user?.name || "School Account"}</p>
+              <p className="text-xs opacity-80 truncate text-sidebar-foreground/60">Administrator</p>
             </div>
           )}
         </div>

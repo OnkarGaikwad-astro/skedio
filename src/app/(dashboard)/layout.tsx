@@ -1,9 +1,12 @@
 import { AppLayout } from "@/components/layout/AppLayout";
+import { getSession } from "@/lib/session";
 
-export default function DashboardLayout({
+export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return <AppLayout>{children}</AppLayout>;
+  const session = await getSession();
+  
+  return <AppLayout user={session}>{children}</AppLayout>;
 }
