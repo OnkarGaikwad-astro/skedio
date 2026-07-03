@@ -391,7 +391,7 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
             return;
           }
 
-          const row = [timeCell];
+          const row: any[] = [timeCell];
           DAYS.forEach(day => {
             const slot = schedule[`${classData.id}-${day}-${index}`];
             if (slot && slot.type === "CLASS") {
@@ -418,7 +418,7 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
             return;
           }
 
-          const row = [timeCell];
+          const row: any[] = [timeCell];
           DAYS.forEach(day => {
             const slot = getTeacherSlot(teacherData.id, day, index);
             if (slot && slot.type === "CLASS") {
@@ -445,7 +445,7 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
             return;
           }
 
-          const row = [timeCell];
+          const row: any[] = [timeCell];
           teachers.forEach(teacher => {
             const slot = getTeacherSlot(teacher.id, day, index);
             if (slot && slot.type === "CLASS") {
