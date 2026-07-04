@@ -9,7 +9,8 @@ export async function middleware(request: NextRequest) {
   const session = request.cookies.get("session")?.value;
 
   // Paths that require authentication
-  const isDashboardRoute = request.nextUrl.pathname.startsWith("/") && 
+  const isDashboardRoute = request.nextUrl.pathname !== "/" && 
+                           request.nextUrl.pathname.startsWith("/") && 
                            !request.nextUrl.pathname.startsWith("/login") && 
                            !request.nextUrl.pathname.startsWith("/register") && 
                            !request.nextUrl.pathname.startsWith("/api") && 
@@ -34,7 +35,7 @@ export async function middleware(request: NextRequest) {
   }
 
   if (isAuthRoute && isAuthenticated) {
-    return NextResponse.redirect(new URL("/", request.url));
+    return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
   return NextResponse.next();

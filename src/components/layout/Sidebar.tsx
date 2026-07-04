@@ -20,7 +20,7 @@ import {
 import { X } from "lucide-react";
 
 const navigation = [
-  { name: "Dashboard", href: "/", icon: LayoutDashboard },
+  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Timetable", href: "/timetable", icon: CalendarDays },
   { name: "Teachers", href: "/teachers", icon: Users },
   { name: "Subjects", href: "/subjects", icon: BookOpen },
