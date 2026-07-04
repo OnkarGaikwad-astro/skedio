@@ -14,7 +14,9 @@ export async function middleware(request: NextRequest) {
                            !request.nextUrl.pathname.startsWith("/login") && 
                            !request.nextUrl.pathname.startsWith("/register") && 
                            !request.nextUrl.pathname.startsWith("/api") && 
-                           !request.nextUrl.pathname.startsWith("/_next");
+                           !request.nextUrl.pathname.startsWith("/_next") &&
+                           !request.nextUrl.pathname.endsWith(".xml") &&
+                           !request.nextUrl.pathname.endsWith(".txt");
 
   // Paths that are only for unauthenticated users
   const isAuthRoute = request.nextUrl.pathname === "/login" || request.nextUrl.pathname === "/register";

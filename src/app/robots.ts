@@ -2,7 +2,7 @@ import { MetadataRoute } from 'next'
 
 export default function robots(): MetadataRoute.Robots {
   // Replace with your actual production domain when you deploy
-  const baseUrl = 'https://skedio.com'
+  const baseUrl = 'https://skedio.astronkar.in'
 
   return {
     rules: {
