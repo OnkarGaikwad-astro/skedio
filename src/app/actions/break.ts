@@ -10,6 +10,7 @@ export type Break = {
   name: string;
   startTime: string;
   endTime: string;
+  applyTo?: string;
   createdAt?: string;
 };
 
@@ -28,7 +29,16 @@ export async function getBreaks() {
     return [];
   }
 
-  return data as Break[];
+  return data.map((b: any) => {
+    let name = b.name;
+    let applyTo = "ALL";
+    if (name.includes(":::_")) {
+      const parts = name.split(":::_");
+      name = parts[0];
+      applyTo = parts[1] || "ALL";
+    }
+    return { ...b, name, applyTo };
+  }) as Break[];
 }
 
 export async function createBreak(formData: FormData) {
@@ -37,13 +47,16 @@ export async function createBreak(formData: FormData) {
     return { error: "Not authenticated" };
   }
 
-  const name = formData.get("name") as string;
+  const rawName = formData.get("name") as string;
   const startTime = formData.get("startTime") as string;
   const endTime = formData.get("endTime") as string;
+  const applyTo = formData.get("applyTo") as string || "ALL";
 
-  if (!name || !startTime || !endTime) {
+  if (!rawName || !startTime || !endTime) {
     return { error: "All fields are required" };
   }
+
+  const name = `${rawName}:::_${applyTo}`;
 
   const { data, error } = await supabase
     .from("Break")
@@ -63,16 +76,19 @@ export async function createBreak(formData: FormData) {
     return { error: error.message };
   }
 
-  return { success: true, break: data };
+  return { success: true, break: { ...data, name: rawName, applyTo } };
 }
 
-export async function updateBreak(id: string, data: { name: string; startTime: string; endTime: string }) {
+export async function updateBreak(id: string, data: { name: string; startTime: string; endTime: string, applyTo?: string }) {
   const session = await getSession();
   if (!session?.schoolId) throw new Error("Unauthorized");
 
+  const applyTo = data.applyTo || "ALL";
+  const name = `${data.name}:::_${applyTo}`;
+
   const { data: updatedBreak, error } = await supabase
     .from("Break")
-    .update(data)
+    .update({ name, startTime: data.startTime, endTime: data.endTime })
     .eq("id", id)
     .eq("schoolId", session.schoolId)
     .select()

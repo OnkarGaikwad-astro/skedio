@@ -144,6 +144,20 @@ export function BreakClient({ initialBreaks }: { initialBreaks: Break[] }) {
                   />
                 </div>
               </div>
+
+              <div className="space-y-2">
+                <label htmlFor="applyTo" className="text-sm font-medium">Applies To</label>
+                <select 
+                  id="applyTo" 
+                  name="applyTo" 
+                  defaultValue={editingBreak?.applyTo || "ALL"}
+                  className="w-full h-11 px-3 bg-muted/50 border border-border rounded-[12px] text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-shadow appearance-none" 
+                >
+                  <option value="ALL">All Days (Including Saturday)</option>
+                  <option value="WEEKDAYS">Monday to Friday Only</option>
+                  <option value="SATURDAY">Saturday Only</option>
+                </select>
+              </div>
               
               <div className="pt-4 flex gap-3">
                 <Dialog.Close className="flex-1 bg-muted hover:bg-muted/80 text-foreground py-2.5 rounded-[14px] text-sm font-medium transition-colors">
@@ -201,11 +215,17 @@ export function BreakClient({ initialBreaks }: { initialBreaks: Break[] }) {
                 </div>
               </div>
               
-              <div className="relative z-10 space-y-1">
+              <div className="relative z-10 space-y-2">
                 <h3 className="font-semibold text-foreground truncate">{b.name}</h3>
-                <div className="flex items-center gap-1.5 text-sm text-muted-foreground font-medium bg-muted/30 w-fit px-2.5 py-1 rounded-full border border-border/50">
-                  <Clock size={12} className="text-primary/70" />
-                  {b.startTime} - {b.endTime}
+                <div className="flex flex-wrap gap-2">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium bg-muted/30 w-fit px-2.5 py-1 rounded-full border border-border/50">
+                    <Clock size={12} className="text-primary/70" />
+                    {b.startTime} - {b.endTime}
+                  </div>
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium bg-muted/30 w-fit px-2.5 py-1 rounded-full border border-border/50">
+                    <CalendarDays size={12} className="text-primary/70" />
+                    {b.applyTo === "WEEKDAYS" ? "Mon-Fri" : b.applyTo === "SATURDAY" ? "Saturday" : "All Days"}
+                  </div>
                 </div>
               </div>
             </div>

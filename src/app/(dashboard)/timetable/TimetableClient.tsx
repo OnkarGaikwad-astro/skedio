@@ -124,13 +124,16 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
 
   const activeDays = useMemo(() => isSaturdayEnabled ? [...DAYS, "Saturday"] : DAYS, [isSaturdayEnabled]);
 
+  const weekdayBreaks = useMemo(() => customBreaks.filter(b => b.applyTo === "ALL" || b.applyTo === "WEEKDAYS" || !b.applyTo), [customBreaks]);
+  const saturdayBreaks = useMemo(() => customBreaks.filter(b => b.applyTo === "ALL" || b.applyTo === "SATURDAY" || !b.applyTo), [customBreaks]);
+
   const dynamicPeriods = useMemo(() => {
-    return generatePeriods(startTime, endTime, parseInt(slotDuration), customBreaks);
-  }, [startTime, endTime, slotDuration, customBreaks]);
+    return generatePeriods(startTime, endTime, parseInt(slotDuration), weekdayBreaks);
+  }, [startTime, endTime, slotDuration, weekdayBreaks]);
 
   const saturdayPeriods = useMemo(() => {
-    return generatePeriods(saturdayStartTime, saturdayEndTime, parseInt(slotDuration), customBreaks);
-  }, [saturdayStartTime, saturdayEndTime, slotDuration, customBreaks]);
+    return generatePeriods(saturdayStartTime, saturdayEndTime, parseInt(slotDuration), saturdayBreaks);
+  }, [saturdayStartTime, saturdayEndTime, slotDuration, saturdayBreaks]);
 
   const maxPeriodsCount = Math.max(dynamicPeriods.length, isSaturdayEnabled ? saturdayPeriods.length : 0);
 
@@ -182,12 +185,20 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
       teachers.forEach(t => teacherWorkload[t.id] = 0);
       
       const classSubjectTeacherMap: Record<string, Record<string, any>> = {};
-      classes.forEach(c => classSubjectTeacherMap[c.id] = {});
+      const subjectWeeklyCount: Record<string, Record<string, number>> = {};
+      const subjectDailyCount: Record<string, Record<string, Record<string, number>>> = {};
+      
+      classes.forEach(c => {
+        classSubjectTeacherMap[c.id] = {};
+        subjectWeeklyCount[c.id] = {};
+        subjectDailyCount[c.id] = {};
+        activeDays.forEach(day => subjectDailyCount[c.id][day] = {});
+      });
       
       activeDays.forEach((day) => {
         const periodsToUse = day === "Saturday" ? saturdayPeriods : dynamicPeriods;
         periodsToUse.forEach((time, index) => {
-          const matchedBreak = checkBreakOverlap(time, customBreaks);
+          const matchedBreak = checkBreakOverlap(time, day === "Saturday" ? saturdayBreaks : weekdayBreaks);
           
           if (matchedBreak) {
             // Assign break to all classes at this time
@@ -209,8 +220,12 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
               ? subjects.filter(s => cls.subjectIds.includes(s.id))
               : subjects;
               
-            // Shuffle subjects to add randomness
-            classAvailableSubjects = [...classAvailableSubjects].sort(() => Math.random() - 0.5);
+            // Smart Distribution: Sort subjects to prioritize those taught least often today and this week
+            classAvailableSubjects = [...classAvailableSubjects].sort((a, b) => {
+              const countA = (subjectWeeklyCount[cls.id][a.id] || 0) * 10 + (subjectDailyCount[cls.id][day][a.id] || 0) * 50 + Math.random();
+              const countB = (subjectWeeklyCount[cls.id][b.id] || 0) * 10 + (subjectDailyCount[cls.id][day][b.id] || 0) * 50 + Math.random();
+              return countA - countB;
+            });
 
             // First period constraint: Try to assign the Class Teacher
             if (index === 0 && cls.classTeacherId && !busyTeachersAtSlot.has(cls.classTeacherId)) {
@@ -297,6 +312,8 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
               };
               busyTeachersAtSlot.add(assignedTeacher.id);
               teacherWorkload[assignedTeacher.id]++;
+              subjectWeeklyCount[cls.id][assignedSubject.id] = (subjectWeeklyCount[cls.id][assignedSubject.id] || 0) + 1;
+              subjectDailyCount[cls.id][day][assignedSubject.id] = (subjectDailyCount[cls.id][day][assignedSubject.id] || 0) + 1;
             } else {
               // Constraints could not be resolved -> Free Period
               newSchedule[`${cls.id}-${day}-${index}`] = { type: "FREE" };
@@ -337,20 +354,20 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
       const customDrawCell = (data: any) => {
         const pdfDoc = data.doc;
         if (data.section === 'body') {
-          const x = data.cell.x + 1;
-          const y = data.cell.y + 1;
-          const w = data.cell.width - 2;
-          const h = data.cell.height - 2;
           const cx = data.cell.x + data.cell.width / 2;
           const cy = data.cell.y + data.cell.height / 2;
-
           const customData = data.cell.raw?.customData || {};
+
+          const margin = 1.5;
+          const x = data.cell.x + margin;
+          const y = data.cell.y + margin;
+          const w = data.cell.width - (margin * 2);
+          const h = data.cell.height - (margin * 2);
+          const radius = 4; // larger curves like the app
 
           if (data.column.index === 0) {
             pdfDoc.setFillColor(248, 250, 252);
-            pdfDoc.setDrawColor(226, 232, 240);
-            pdfDoc.setLineWidth(0.3);
-            pdfDoc.roundedRect(x, y, w, h, 2, 2, "FD");
+            pdfDoc.roundedRect(x, y, w, h, radius, radius, "F");
             pdfDoc.setFont("helvetica", "bold");
             pdfDoc.setFontSize(9);
             pdfDoc.setTextColor(100, 116, 139);
@@ -360,28 +377,76 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
               pdfDoc.setFillColor(248, 250, 252);
               pdfDoc.setDrawColor(226, 232, 240);
               pdfDoc.setLineWidth(0.3);
-              pdfDoc.roundedRect(x, y, w, h, 2, 2, "FD");
+              pdfDoc.roundedRect(x, y, w, h, radius, radius, "FD");
+              
               pdfDoc.setFont("helvetica", "bold");
-              pdfDoc.setFontSize(9);
+              pdfDoc.setFontSize(8.5);
+              const nameLines = pdfDoc.splitTextToSize(customData.name || "", w - 2);
+              
+              pdfDoc.setFont("helvetica", "normal");
+              pdfDoc.setFontSize(6.5);
+              const timeLines = pdfDoc.splitTextToSize(customData.time || "", w - 2);
+              
+              const totalLines = nameLines.length + timeLines.length;
+              const lineSpacing = 3.2;
+              let currentY = cy - ((totalLines - 1) * lineSpacing) / 2;
+              
+              pdfDoc.setFont("helvetica", "bold");
+              pdfDoc.setFontSize(8.5);
+              pdfDoc.setTextColor(100, 116, 139);
+              pdfDoc.text(nameLines, cx, currentY, { align: "center", baseline: "middle" });
+              currentY += lineSpacing * nameLines.length;
+              
+              pdfDoc.setFont("helvetica", "normal");
+              pdfDoc.setFontSize(6.5);
               pdfDoc.setTextColor(148, 163, 184);
-              pdfDoc.text(customData.name || "", cx, cy, { align: "center", baseline: "middle" });
+              pdfDoc.text(timeLines, cx, currentY, { align: "center", baseline: "middle" });
             } else if (customData.type === 'slot') {
-              pdfDoc.setFillColor(240, 249, 255);
-              pdfDoc.setDrawColor(186, 232, 253);
+              pdfDoc.setFillColor(244, 249, 252);
+              pdfDoc.setDrawColor(219, 234, 244);
               pdfDoc.setLineWidth(0.3);
-              pdfDoc.roundedRect(x, y, w, h, 2, 2, "FD");
-              pdfDoc.setFont("helvetica", "bold");
-              pdfDoc.setFontSize(9);
-              pdfDoc.setTextColor(15, 23, 42);
-              pdfDoc.text(customData.subject || "", cx, cy - 1.5, { align: "center", baseline: "middle" });
+              pdfDoc.roundedRect(x, y, w, h, radius, radius, "FD");
+              
               pdfDoc.setFont("helvetica", "normal");
               pdfDoc.setFontSize(7.5);
+              const timeLines = pdfDoc.splitTextToSize(customData.time || "", w - 2);
+              
+              pdfDoc.setFont("helvetica", "bold");
+              pdfDoc.setFontSize(10.5);
+              const subjectLines = pdfDoc.splitTextToSize(customData.subject || "", w - 2);
+              
+              pdfDoc.setFont("helvetica", "normal");
+              pdfDoc.setFontSize(8.5);
+              const teacherLines = pdfDoc.splitTextToSize(customData.teacher || "", w - 2);
+              
+              const totalLines = subjectLines.length;
+              const lineSpacing = 4.2;
+              let currentY = cy - ((totalLines - 1) * lineSpacing) / 2;
+              
+              // Time (Top Left)
+              pdfDoc.setFont("helvetica", "normal");
+              pdfDoc.setFontSize(7.5);
+              pdfDoc.setTextColor(148, 163, 184);
+              pdfDoc.text(timeLines, x + 3, y + 2.5, { align: "left", baseline: "top" });
+              
+              // Subject (Centered)
+              pdfDoc.setFont("helvetica", "bold");
+              pdfDoc.setFontSize(10.5);
+              pdfDoc.setTextColor(0, 78, 100);
+              pdfDoc.text(subjectLines, cx, currentY, { align: "center", baseline: "middle" });
+              
+              // Teacher (Bottom Center)
+              pdfDoc.setFont("helvetica", "normal");
+              pdfDoc.setFontSize(8.5);
               pdfDoc.setTextColor(100, 116, 139);
-              pdfDoc.text(customData.subtitle || "", cx, cy + 2.5, { align: "center", baseline: "middle" });
+              let teacherY = (y + h - 2.5) - (teacherLines.length - 1) * 3.5;
+              pdfDoc.text(teacherLines, cx, teacherY, { align: "center", baseline: "bottom" });
             } else {
               pdfDoc.setDrawColor(241, 245, 249);
-              pdfDoc.setLineWidth(0.3);
-              pdfDoc.roundedRect(x, y, w, h, 2, 2, "S");
+              pdfDoc.setLineWidth(0.5);
+              pdfDoc.setLineDashPattern([1.5, 1.5], 0);
+              pdfDoc.roundedRect(x, y, w, h, radius, radius, "S");
+              pdfDoc.setLineDashPattern([], 0);
               pdfDoc.setFont("helvetica", "normal");
               pdfDoc.setFontSize(8);
               pdfDoc.setTextColor(203, 213, 225);
@@ -392,94 +457,167 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
       };
 
       const tableStyles = {
-        theme: 'grid' as const,
-        styles: { font: 'helvetica', fontSize: 10, cellPadding: 3, halign: 'center' as const, valign: 'middle' as const, lineWidth: 0, fillColor: [255, 255, 255] as [number, number, number] },
-        headStyles: { fillColor: [0, 78, 100] as [number, number, number], textColor: 255, fontStyle: 'bold' as const },
-        alternateRowStyles: { fillColor: [255, 255, 255] as [number, number, number] },
-        bodyStyles: { fillColor: [255, 255, 255] as [number, number, number] },
-        didDrawCell: customDrawCell
+        theme: 'plain' as const,
+        styles: { font: 'helvetica', fontSize: 10, cellPadding: 2, halign: 'center' as const, valign: 'middle' as const },
+        headStyles: { fillColor: [248, 250, 252] as [number, number, number], textColor: [15, 23, 42], fontStyle: 'bold' as const },
+        didDrawCell: customDrawCell,
+        rowPageBreak: 'avoid' as const
       };
 
       const generateTableForClass = (classData: any, startY: number = 20) => {
         pdf.setFontSize(16);
         pdf.text(`Timetable - Class ${classData.name} ${classData.division}`, pageWidth / 2, startY, { align: "center" });
 
+        const totalWidth = pageWidth - 28;
+        const periodColWidth = 18;
+        const dayColWidth = (totalWidth - periodColWidth) / activeDays.length;
+        const columnStyles: any = { 0: { cellWidth: periodColWidth } };
+        activeDays.forEach((_, i) => { columnStyles[i + 1] = { cellWidth: dayColWidth }; });
+
         const body: any[] = [];
         Array.from({ length: maxPeriodsCount }).forEach((_, index) => {
-          const timeCell = { content: "\n", customData: { type: 'time', name: `P${index + 1}` } };
+          const timeCell = { content: "\n\n\n\n", customData: { type: 'time', name: `P${index + 1}` } };
           const row: any[] = [timeCell];
           
-          activeDays.forEach(day => {
-            const time = day === "Saturday" ? saturdayPeriods[index] : dynamicPeriods[index];
-            if (!time) {
-              row.push({ content: "\n", customData: { type: 'free' } });
+          let skipCols = 0;
+
+          activeDays.forEach((day, dIdx) => {
+            if (skipCols > 0) {
+              skipCols--;
               return;
             }
 
-            const b = checkBreakOverlap(time, customBreaks);
+            const time = day === "Saturday" ? saturdayPeriods[index] : dynamicPeriods[index];
+            if (!time) {
+              row.push({ content: "\n\n\n\n", customData: { type: 'free' } });
+              return;
+            }
+
+            const b = checkBreakOverlap(time, day === "Saturday" ? saturdayBreaks : weekdayBreaks);
             if (b) {
-              row.push({ content: "\n", customData: { type: 'break', name: `${b.name.toUpperCase()}\n${time}` } });
+              let colSpan = 1;
+              for (let next = dIdx + 1; next < activeDays.length; next++) {
+                const nextDay = activeDays[next];
+                const nextTime = nextDay === "Saturday" ? saturdayPeriods[index] : dynamicPeriods[index];
+                if (nextTime) {
+                  const nextB = checkBreakOverlap(nextTime, nextDay === "Saturday" ? saturdayBreaks : weekdayBreaks);
+                  if (nextB && nextB.id === b.id && nextTime === time) {
+                    colSpan++;
+                    continue;
+                  }
+                }
+                break;
+              }
+
+              skipCols = colSpan - 1;
+              row.push({ 
+                content: "\n\n\n\n", 
+                colSpan, 
+                customData: { type: 'break', name: b.name.toUpperCase(), time: time } 
+              });
               return;
             }
 
             const slot = schedule[`${classData.id}-${day}-${index}`];
             if (slot && slot.type === "CLASS") {
-              row.push({ content: "\n", customData: { type: 'slot', subject: slot.subject?.name || '', subtitle: `${slot.teacher?.name || ''}\n${time}` } });
+              row.push({ content: "\n\n\n\n", customData: { type: 'slot', subject: slot.subject?.name || '', teacher: slot.teacher?.name || '', time: time } });
             } else {
-              row.push({ content: "\n", customData: { type: 'free' } });
+              row.push({ content: "\n\n\n\n", customData: { type: 'free' } });
             }
           });
           body.push(row);
         });
-        autoTable(pdf, { head: [["Period", ...activeDays]], body, startY: startY + 10, ...tableStyles });
+        autoTable(pdf, { head: [["Period", ...activeDays]], body, startY: startY + 10, ...tableStyles, columnStyles });
       };
 
       const generateTableForTeacher = (teacherData: any, startY: number = 20) => {
         pdf.setFontSize(16);
         pdf.text(`Timetable - Teacher: ${teacherData.name}`, pageWidth / 2, startY, { align: "center" });
 
+        const totalWidth = pageWidth - 28;
+        const periodColWidth = 18;
+        const dayColWidth = (totalWidth - periodColWidth) / activeDays.length;
+        const columnStyles: any = { 0: { cellWidth: periodColWidth } };
+        activeDays.forEach((_, i) => { columnStyles[i + 1] = { cellWidth: dayColWidth }; });
+
         const body: any[] = [];
         Array.from({ length: maxPeriodsCount }).forEach((_, index) => {
-          const timeCell = { content: "\n", customData: { type: 'time', name: `P${index + 1}` } };
+          const timeCell = { content: "\n\n\n\n", customData: { type: 'time', name: `P${index + 1}` } };
           const row: any[] = [timeCell];
           
-          activeDays.forEach(day => {
-            const time = day === "Saturday" ? saturdayPeriods[index] : dynamicPeriods[index];
-            if (!time) {
-              row.push({ content: "\n", customData: { type: 'free' } });
+          let skipCols = 0;
+
+          activeDays.forEach((day, dIdx) => {
+            if (skipCols > 0) {
+              skipCols--;
               return;
             }
 
-            const b = checkBreakOverlap(time, customBreaks);
+            const time = day === "Saturday" ? saturdayPeriods[index] : dynamicPeriods[index];
+            if (!time) {
+              row.push({ content: "\n\n\n\n", customData: { type: 'free' } });
+              return;
+            }
+
+            const b = checkBreakOverlap(time, day === "Saturday" ? saturdayBreaks : weekdayBreaks);
             if (b) {
-              row.push({ content: "\n", customData: { type: 'break', name: `${b.name.toUpperCase()}\n${time}` } });
+              let colSpan = 1;
+              for (let next = dIdx + 1; next < activeDays.length; next++) {
+                const nextDay = activeDays[next];
+                const nextTime = nextDay === "Saturday" ? saturdayPeriods[index] : dynamicPeriods[index];
+                if (nextTime) {
+                  const nextB = checkBreakOverlap(nextTime, nextDay === "Saturday" ? saturdayBreaks : weekdayBreaks);
+                  if (nextB && nextB.id === b.id && nextTime === time) {
+                    colSpan++;
+                    continue;
+                  }
+                }
+                break;
+              }
+
+              skipCols = colSpan - 1;
+              row.push({ 
+                content: "\n\n\n\n", 
+                colSpan, 
+                customData: { type: 'break', name: b.name.toUpperCase(), time: time } 
+              });
               return;
             }
 
             const slot = getTeacherSlot(teacherData.id, day, index);
             if (slot && slot.type === "CLASS") {
-              row.push({ content: "\n", customData: { type: 'slot', subject: slot.subject?.name || '', subtitle: `Class: ${slot.classInfo?.name || ''} ${slot.classInfo?.division || ''}\n${time}` } });
+              row.push({ content: "\n\n\n\n", customData: { type: 'slot', subject: slot.subject?.name || '', teacher: `Class ${slot.classInfo?.name || ''} ${slot.classInfo?.division || ''}`, time: time } });
             } else {
-              row.push({ content: "\n", customData: { type: 'free' } });
+              row.push({ content: "\n\n\n\n", customData: { type: 'free' } });
             }
           });
           body.push(row);
         });
-        autoTable(pdf, { head: [["Period", ...activeDays]], body, startY: startY + 10, ...tableStyles });
+        autoTable(pdf, { head: [["Period", ...activeDays]], body, startY: startY + 10, ...tableStyles, columnStyles });
       };
 
       const generateTableForMaster = (day: string, startY: number = 20) => {
         pdf.setFontSize(16);
         pdf.text(`Master Timetable - ${day}`, pageWidth / 2, startY, { align: "center" });
 
+        const totalWidth = pageWidth - 28;
+        const timeColWidth = 24;
+        const teacherColWidth = teachers.length > 0 ? (totalWidth - timeColWidth) / teachers.length : 0;
+        const columnStyles: any = { 0: { cellWidth: timeColWidth } };
+        teachers.forEach((_, i) => { columnStyles[i + 1] = { cellWidth: teacherColWidth }; });
+
         const body: any[] = [];
         const periodsToUse = day === "Saturday" ? saturdayPeriods : dynamicPeriods;
         
         periodsToUse.forEach((time, index) => {
-          const timeCell = { content: "\n", customData: { type: 'time', name: time } };
-          const b = checkBreakOverlap(time, customBreaks);
+          const timeCell = { content: "\n\n\n\n", customData: { type: 'time', name: time } };
+          const b = checkBreakOverlap(time, day === "Saturday" ? saturdayBreaks : weekdayBreaks);
           if (b) {
-            body.push([timeCell, { content: "\n", colSpan: teachers.length, customData: { type: 'break', name: b.name.toUpperCase() } }]);
+            body.push([timeCell, { 
+              content: "\n\n\n\n", 
+              colSpan: teachers.length, 
+              customData: { type: 'break', name: b.name.toUpperCase(), time: time } 
+            }]);
             return;
           }
 
@@ -487,14 +625,14 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
           teachers.forEach(teacher => {
             const slot = getTeacherSlot(teacher.id, day, index);
             if (slot && slot.type === "CLASS") {
-              row.push({ content: "\n", customData: { type: 'slot', subject: slot.subject?.name || '', subtitle: `Class: ${slot.classInfo?.name || ''} ${slot.classInfo?.division || ''}` } });
+              row.push({ content: "\n\n\n\n", customData: { type: 'slot', subject: slot.subject?.name || '', teacher: `Class ${slot.classInfo?.name || ''} ${slot.classInfo?.division || ''}`, time: time } });
             } else {
-              row.push({ content: "\n", customData: { type: 'free' } });
+              row.push({ content: "\n\n\n\n", customData: { type: 'free' } });
             }
           });
           body.push(row);
         });
-        autoTable(pdf, { head: [["Time", ...teachers.map(t => t.name)]], body, startY: startY + 10, ...tableStyles });
+        autoTable(pdf, { head: [["Time", ...teachers.map(t => t.name)]], body, startY: startY + 10, ...tableStyles, columnStyles });
       };
 
       let activeExportType = exportType;
@@ -877,8 +1015,8 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
 
                       const slot = schedule[`${selectedClass}-${day}-${index}`];
                       
-                      if (checkBreakOverlap(time, customBreaks)) {
-                        const b = checkBreakOverlap(time, customBreaks);
+                      if (checkBreakOverlap(time, day === "Saturday" ? saturdayBreaks : weekdayBreaks)) {
+                        const b = checkBreakOverlap(time, day === "Saturday" ? saturdayBreaks : weekdayBreaks);
                         return (
                           <div key={index} className="h-24 bg-muted/50 rounded-[14px] flex flex-col items-center justify-center relative overflow-hidden group">
                             <span className="text-[10px] font-medium text-muted-foreground mb-1">{time}</span>
@@ -936,8 +1074,8 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
                       const time = day === "Saturday" ? saturdayPeriods[index] : dynamicPeriods[index];
                       if (!time) return <div key={index} className="h-24 bg-transparent border-none"></div>;
 
-                      if (checkBreakOverlap(time, customBreaks)) {
-                        const b = checkBreakOverlap(time, customBreaks);
+                      if (checkBreakOverlap(time, day === "Saturday" ? saturdayBreaks : weekdayBreaks)) {
+                        const b = checkBreakOverlap(time, day === "Saturday" ? saturdayBreaks : weekdayBreaks);
                         return (
                           <div key={index} className="h-24 bg-muted/50 rounded-[14px] flex flex-col items-center justify-center relative overflow-hidden group">
                             <span className="text-[10px] font-medium text-muted-foreground mb-1">{time}</span>
@@ -1012,8 +1150,8 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
                             const time = currentDay === "Saturday" ? saturdayPeriods[index] : dynamicPeriods[index];
                             if (!time) return <div key={index} className="h-24 bg-transparent border-none"></div>;
 
-                            if (checkBreakOverlap(time, customBreaks)) {
-                              const b = checkBreakOverlap(time, customBreaks);
+                            if (checkBreakOverlap(time, currentDay === "Saturday" ? saturdayBreaks : weekdayBreaks)) {
+                              const b = checkBreakOverlap(time, currentDay === "Saturday" ? saturdayBreaks : weekdayBreaks);
                               return (
                                 <div key={index} className="h-24 bg-muted/50 rounded-[14px] flex items-center justify-center relative overflow-hidden group">
                                   <span className="bg-background/95 px-5 py-2 rounded-full border border-border text-foreground font-heading font-bold tracking-[0.2em] uppercase text-xs relative z-10 shadow-sm backdrop-blur-md">{b?.name}</span>
