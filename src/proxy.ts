@@ -5,7 +5,7 @@ import { jwtVerify } from "jose";
 const secretKey = process.env.JWT_SECRET || "super-secret-jwt-key-for-skedio-auth-replace-in-production";
 const key = new TextEncoder().encode(secretKey);
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const session = request.cookies.get("session")?.value;
 
   // Paths that require authentication
