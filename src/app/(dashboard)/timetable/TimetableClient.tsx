@@ -107,6 +107,7 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
   const [isExporting, setIsExporting] = useState(false);
   
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const [isSaturdaySettingsOpen, setIsSaturdaySettingsOpen] = useState(false);
   const [exportType, setExportType] = useState<"current" | "master" | "all-classes" | "class" | "teacher">("current");
   const [exportEntityId, setExportEntityId] = useState<string>("");
   
@@ -117,12 +118,23 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
   const [startTime, setStartTime] = useState(initialTimetable?.settings?.startTime || "10:50");
   const [endTime, setEndTime] = useState(initialTimetable?.settings?.endTime || "16:30");
   const [slotDuration, setSlotDuration] = useState(initialTimetable?.settings?.slotDuration || "35");
+  const [isSaturdayEnabled, setIsSaturdayEnabled] = useState(initialTimetable?.settings?.isSaturdayEnabled ?? true);
+  const [saturdayStartTime, setSaturdayStartTime] = useState(initialTimetable?.settings?.saturdayStartTime || "07:30");
+  const [saturdayEndTime, setSaturdayEndTime] = useState(initialTimetable?.settings?.saturdayEndTime || "12:00");
+
+  const activeDays = useMemo(() => isSaturdayEnabled ? [...DAYS, "Saturday"] : DAYS, [isSaturdayEnabled]);
 
   const dynamicPeriods = useMemo(() => {
     return generatePeriods(startTime, endTime, parseInt(slotDuration), customBreaks);
   }, [startTime, endTime, slotDuration, customBreaks]);
 
-  const prevSettings = useRef({ startTime, endTime, slotDuration });
+  const saturdayPeriods = useMemo(() => {
+    return generatePeriods(saturdayStartTime, saturdayEndTime, parseInt(slotDuration), customBreaks);
+  }, [saturdayStartTime, saturdayEndTime, slotDuration, customBreaks]);
+
+  const maxPeriodsCount = Math.max(dynamicPeriods.length, isSaturdayEnabled ? saturdayPeriods.length : 0);
+
+  const prevSettings = useRef({ startTime, endTime, slotDuration, isSaturdayEnabled, saturdayStartTime, saturdayEndTime });
 
   // Sync state if initialTimetable prop changes (e.g., from server navigation)
   useEffect(() => {
@@ -131,10 +143,16 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
       const st = initialTimetable.settings?.startTime || "10:50";
       const et = initialTimetable.settings?.endTime || "16:30";
       const sd = initialTimetable.settings?.slotDuration || "35";
+      const satEnabled = initialTimetable.settings?.isSaturdayEnabled ?? true;
+      const satSt = initialTimetable.settings?.saturdayStartTime || "07:30";
+      const satEt = initialTimetable.settings?.saturdayEndTime || "12:00";
       setStartTime(st);
       setEndTime(et);
       setSlotDuration(sd);
-      prevSettings.current = { startTime: st, endTime: et, slotDuration: sd };
+      setIsSaturdayEnabled(satEnabled);
+      setSaturdayStartTime(satSt);
+      setSaturdayEndTime(satEt);
+      prevSettings.current = { startTime: st, endTime: et, slotDuration: sd, isSaturdayEnabled: satEnabled, saturdayStartTime: satSt, saturdayEndTime: satEt };
     }
   }, [initialTimetable]);
 
@@ -143,13 +161,16 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
     const hasChanged = 
       prevSettings.current.startTime !== startTime ||
       prevSettings.current.endTime !== endTime ||
-      prevSettings.current.slotDuration !== slotDuration;
+      prevSettings.current.slotDuration !== slotDuration ||
+      prevSettings.current.isSaturdayEnabled !== isSaturdayEnabled ||
+      prevSettings.current.saturdayStartTime !== saturdayStartTime ||
+      prevSettings.current.saturdayEndTime !== saturdayEndTime;
 
     if (hasChanged) {
       setSchedule({});
-      prevSettings.current = { startTime, endTime, slotDuration };
+      prevSettings.current = { startTime, endTime, slotDuration, isSaturdayEnabled, saturdayStartTime, saturdayEndTime };
     }
-  }, [startTime, endTime, slotDuration]);
+  }, [startTime, endTime, slotDuration, isSaturdayEnabled, saturdayStartTime, saturdayEndTime]);
 
   const generateTimetable = () => {
     setIsGenerating(true);
@@ -163,8 +184,9 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
       const classSubjectTeacherMap: Record<string, Record<string, any>> = {};
       classes.forEach(c => classSubjectTeacherMap[c.id] = {});
       
-      DAYS.forEach((day) => {
-        dynamicPeriods.forEach((time, index) => {
+      activeDays.forEach((day) => {
+        const periodsToUse = day === "Saturday" ? saturdayPeriods : dynamicPeriods;
+        periodsToUse.forEach((time, index) => {
           const matchedBreak = checkBreakOverlap(time, customBreaks);
           
           if (matchedBreak) {
@@ -292,7 +314,7 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
     if (Object.keys(schedule).length === 0) return;
     setIsSaving(true);
     try {
-      await saveTimetable(schedule, { startTime, endTime, slotDuration });
+      await saveTimetable(schedule, { startTime, endTime, slotDuration, isSaturdayEnabled, saturdayStartTime, saturdayEndTime });
       alert("Timetable saved successfully!");
     } catch (err: any) {
       console.error(err);
@@ -383,26 +405,33 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
         pdf.text(`Timetable - Class ${classData.name} ${classData.division}`, pageWidth / 2, startY, { align: "center" });
 
         const body: any[] = [];
-        dynamicPeriods.forEach((time, index) => {
-          const timeCell = { content: "\n", customData: { type: 'time', name: time } };
-          const b = checkBreakOverlap(time, customBreaks);
-          if (b) {
-            body.push([timeCell, { content: "\n", colSpan: 5, customData: { type: 'break', name: b.name.toUpperCase() } }]);
-            return;
-          }
-
+        Array.from({ length: maxPeriodsCount }).forEach((_, index) => {
+          const timeCell = { content: "\n", customData: { type: 'time', name: `P${index + 1}` } };
           const row: any[] = [timeCell];
-          DAYS.forEach(day => {
+          
+          activeDays.forEach(day => {
+            const time = day === "Saturday" ? saturdayPeriods[index] : dynamicPeriods[index];
+            if (!time) {
+              row.push({ content: "\n", customData: { type: 'free' } });
+              return;
+            }
+
+            const b = checkBreakOverlap(time, customBreaks);
+            if (b) {
+              row.push({ content: "\n", customData: { type: 'break', name: `${b.name.toUpperCase()}\n${time}` } });
+              return;
+            }
+
             const slot = schedule[`${classData.id}-${day}-${index}`];
             if (slot && slot.type === "CLASS") {
-              row.push({ content: "\n", customData: { type: 'slot', subject: slot.subject?.name || '', subtitle: slot.teacher?.name || '' } });
+              row.push({ content: "\n", customData: { type: 'slot', subject: slot.subject?.name || '', subtitle: `${slot.teacher?.name || ''}\n${time}` } });
             } else {
               row.push({ content: "\n", customData: { type: 'free' } });
             }
           });
           body.push(row);
         });
-        autoTable(pdf, { head: [["Time", ...DAYS]], body, startY: startY + 10, ...tableStyles });
+        autoTable(pdf, { head: [["Period", ...activeDays]], body, startY: startY + 10, ...tableStyles });
       };
 
       const generateTableForTeacher = (teacherData: any, startY: number = 20) => {
@@ -410,26 +439,33 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
         pdf.text(`Timetable - Teacher: ${teacherData.name}`, pageWidth / 2, startY, { align: "center" });
 
         const body: any[] = [];
-        dynamicPeriods.forEach((time, index) => {
-          const timeCell = { content: "\n", customData: { type: 'time', name: time } };
-          const b = checkBreakOverlap(time, customBreaks);
-          if (b) {
-            body.push([timeCell, { content: "\n", colSpan: 5, customData: { type: 'break', name: b.name.toUpperCase() } }]);
-            return;
-          }
-
+        Array.from({ length: maxPeriodsCount }).forEach((_, index) => {
+          const timeCell = { content: "\n", customData: { type: 'time', name: `P${index + 1}` } };
           const row: any[] = [timeCell];
-          DAYS.forEach(day => {
+          
+          activeDays.forEach(day => {
+            const time = day === "Saturday" ? saturdayPeriods[index] : dynamicPeriods[index];
+            if (!time) {
+              row.push({ content: "\n", customData: { type: 'free' } });
+              return;
+            }
+
+            const b = checkBreakOverlap(time, customBreaks);
+            if (b) {
+              row.push({ content: "\n", customData: { type: 'break', name: `${b.name.toUpperCase()}\n${time}` } });
+              return;
+            }
+
             const slot = getTeacherSlot(teacherData.id, day, index);
             if (slot && slot.type === "CLASS") {
-              row.push({ content: "\n", customData: { type: 'slot', subject: slot.subject?.name || '', subtitle: `Class: ${slot.classInfo?.name || ''} ${slot.classInfo?.division || ''}` } });
+              row.push({ content: "\n", customData: { type: 'slot', subject: slot.subject?.name || '', subtitle: `Class: ${slot.classInfo?.name || ''} ${slot.classInfo?.division || ''}\n${time}` } });
             } else {
               row.push({ content: "\n", customData: { type: 'free' } });
             }
           });
           body.push(row);
         });
-        autoTable(pdf, { head: [["Time", ...DAYS]], body, startY: startY + 10, ...tableStyles });
+        autoTable(pdf, { head: [["Period", ...activeDays]], body, startY: startY + 10, ...tableStyles });
       };
 
       const generateTableForMaster = (day: string, startY: number = 20) => {
@@ -437,7 +473,9 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
         pdf.text(`Master Timetable - ${day}`, pageWidth / 2, startY, { align: "center" });
 
         const body: any[] = [];
-        dynamicPeriods.forEach((time, index) => {
+        const periodsToUse = day === "Saturday" ? saturdayPeriods : dynamicPeriods;
+        
+        periodsToUse.forEach((time, index) => {
           const timeCell = { content: "\n", customData: { type: 'time', name: time } };
           const b = checkBreakOverlap(time, customBreaks);
           if (b) {
@@ -739,6 +777,68 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
               </SelectContent>
             </Select>
           </div>
+
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Adv. Options</Label>
+            <button 
+              onClick={() => setIsSaturdaySettingsOpen(true)}
+              className="h-10 px-4 rounded-[14px] border border-border bg-background hover:bg-muted transition-colors text-sm font-medium flex items-center gap-2"
+            >
+              <SlidersHorizontal size={14} /> Settings
+            </button>
+          </div>
+          
+          <Dialog open={isSaturdaySettingsOpen} onOpenChange={setIsSaturdaySettingsOpen}>
+            <DialogContent className="sm:max-w-[425px] rounded-[20px]">
+              <DialogHeader>
+                <DialogTitle className="font-heading text-xl">Advanced Settings</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-6 mt-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label className="text-base font-medium">Enable Saturday Half-Day</Label>
+                    <p className="text-sm text-muted-foreground">Include Saturday in the timetable.</p>
+                  </div>
+                  <input 
+                    type="checkbox" 
+                    checked={isSaturdayEnabled}
+                    onChange={(e) => setIsSaturdayEnabled(e.target.checked)}
+                    className="w-5 h-5 rounded border-border accent-primary cursor-pointer"
+                  />
+                </div>
+                
+                {isSaturdayEnabled && (
+                  <div className="grid grid-cols-2 gap-4 animate-in fade-in duration-300">
+                    <div className="space-y-2">
+                      <Label>Sat. Start Time</Label>
+                      <input 
+                        type="time" 
+                        value={saturdayStartTime}
+                        onChange={(e) => setSaturdayStartTime(e.target.value)}
+                        className="h-10 px-3 w-full rounded-[14px] border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Sat. End Time</Label>
+                      <input 
+                        type="time" 
+                        value={saturdayEndTime}
+                        onChange={(e) => setSaturdayEndTime(e.target.value)}
+                        className="h-10 px-3 w-full rounded-[14px] border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  onClick={() => setIsSaturdaySettingsOpen(false)}
+                  className="w-full bg-primary text-primary-foreground py-2.5 rounded-[14px] text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm mt-2"
+                >
+                  Done
+                </button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
@@ -757,38 +857,48 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
             
             {/* --- CLASS VIEW --- */}
             {viewMode === "class" && (
-              <div className="grid gap-3 h-full" style={{ gridTemplateColumns: `100px repeat(${DAYS.length}, minmax(180px, 1fr))` }}>
+              <div className="grid gap-3 h-full" style={{ gridTemplateColumns: `100px repeat(${activeDays.length}, minmax(180px, 1fr))` }}>
                 <div className="space-y-3">
-                  <div className="h-12 flex items-end justify-center pb-2 text-sm font-medium text-muted-foreground border-b border-border/50">Time</div>
-                  {dynamicPeriods.map(time => {
-                    const isBreak = checkBreakOverlap(time, customBreaks);
+                  <div className="h-12 flex items-end justify-center pb-2 text-sm font-medium text-muted-foreground border-b border-border/50">Period</div>
+                  {Array.from({ length: maxPeriodsCount }).map((_, index) => {
                     return (
-                      <div key={time} className={`${isBreak ? "h-24" : "h-20"} flex items-center justify-center text-xs font-semibold text-muted-foreground/80 bg-muted/30 rounded-[14px] border border-border/30`}>
-                        <Clock size={12} className="mr-1.5 opacity-50" />
-                        {time}
+                      <div key={index} className={`h-24 flex items-center justify-center text-xs font-semibold text-muted-foreground/80 bg-muted/30 rounded-[14px] border border-border/30`}>
+                        P{index + 1}
                       </div>
                     )
                   })}
                 </div>
-                {DAYS.map(day => (
+                {activeDays.map(day => (
                   <div key={day} className="space-y-3">
                     <div className="h-12 flex items-end justify-center pb-2 text-sm font-medium text-foreground border-b border-border/50">{day}</div>
-                    {dynamicPeriods.map((time, index) => {
+                    {Array.from({ length: maxPeriodsCount }).map((_, index) => {
+                      const time = day === "Saturday" ? saturdayPeriods[index] : dynamicPeriods[index];
+                      if (!time) return <div key={index} className="h-24 bg-transparent border-none"></div>;
+
                       const slot = schedule[`${selectedClass}-${day}-${index}`];
                       
                       if (checkBreakOverlap(time, customBreaks)) {
                         const b = checkBreakOverlap(time, customBreaks);
                         return (
-                          <div key={index} className="h-24 bg-muted/50 rounded-[14px] flex items-center justify-center relative overflow-hidden group">
-                            <span className="bg-background/95 px-5 py-2 rounded-full border border-border text-foreground font-heading font-bold tracking-[0.2em] uppercase text-sm relative z-10 shadow-sm backdrop-blur-md">{b?.name}</span>
+                          <div key={index} className="h-24 bg-muted/50 rounded-[14px] flex flex-col items-center justify-center relative overflow-hidden group">
+                            <span className="text-[10px] font-medium text-muted-foreground mb-1">{time}</span>
+                            <span className="bg-background/95 px-5 py-2 rounded-full border border-border text-foreground font-heading font-bold tracking-[0.2em] uppercase text-xs relative z-10 shadow-sm backdrop-blur-md">{b?.name}</span>
                           </div>
                         )
                       }
                       
-                      if (!slot) return <div key={index} className="h-20 bg-card rounded-[14px] border border-dashed border-border/50 flex items-center justify-center text-muted-foreground/30 text-xs">Empty</div>;
+                      if (!slot || slot.type === "FREE") return (
+                        <div key={index} className="h-24 bg-card rounded-[14px] border border-dashed border-border/50 flex flex-col items-center justify-center text-muted-foreground/30 text-xs">
+                          <span className="text-[10px] font-medium text-muted-foreground/50 mb-1">{time}</span>
+                          Empty
+                        </div>
+                      );
                       
                       return (
-                        <div key={index} className="h-20 bg-card hover:bg-muted/50 rounded-[14px] border border-border/80 p-3 flex flex-col justify-between group cursor-grab transition-colors shadow-sm hover:shadow-md">
+                        <div key={index} className="h-24 bg-card hover:bg-muted/50 rounded-[14px] border border-border/80 p-3 pt-6 flex flex-col justify-between group cursor-grab transition-colors shadow-sm hover:shadow-md relative">
+                          <div className="absolute top-2 left-3 text-[9px] font-medium text-muted-foreground/80 flex items-center gap-1">
+                            <Clock size={10} className="opacity-50" /> {time}
+                          </div>
                           <div className="flex justify-between items-start">
                             <span className="font-semibold text-sm text-primary line-clamp-1">{slot.subject?.name}</span>
                           </div>
@@ -808,38 +918,48 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
 
             {/* --- TEACHER VIEW --- */}
             {viewMode === "teacher" && (
-              <div className="grid gap-3 h-full" style={{ gridTemplateColumns: `100px repeat(${DAYS.length}, minmax(180px, 1fr))` }}>
+              <div className="grid gap-3 h-full" style={{ gridTemplateColumns: `100px repeat(${activeDays.length}, minmax(180px, 1fr))` }}>
                 <div className="space-y-3">
-                  <div className="h-12 flex items-end justify-center pb-2 text-sm font-medium text-muted-foreground border-b border-border/50">Time</div>
-                  {dynamicPeriods.map(time => {
-                    const isBreak = checkBreakOverlap(time, customBreaks);
+                  <div className="h-12 flex items-end justify-center pb-2 text-sm font-medium text-muted-foreground border-b border-border/50">Period</div>
+                  {Array.from({ length: maxPeriodsCount }).map((_, index) => {
                     return (
-                      <div key={time} className={`${isBreak ? "h-24" : "h-20"} flex items-center justify-center text-xs font-semibold text-muted-foreground/80 bg-muted/30 rounded-[14px] border border-border/30`}>
-                        <Clock size={12} className="mr-1.5 opacity-50" />
-                        {time}
+                      <div key={index} className={`h-24 flex items-center justify-center text-xs font-semibold text-muted-foreground/80 bg-muted/30 rounded-[14px] border border-border/30`}>
+                        P{index + 1}
                       </div>
                     )
                   })}
                 </div>
-                {DAYS.map(day => (
+                {activeDays.map(day => (
                   <div key={day} className="space-y-3">
                     <div className="h-12 flex items-end justify-center pb-2 text-sm font-medium text-foreground border-b border-border/50">{day}</div>
-                    {dynamicPeriods.map((time, index) => {
+                    {Array.from({ length: maxPeriodsCount }).map((_, index) => {
+                      const time = day === "Saturday" ? saturdayPeriods[index] : dynamicPeriods[index];
+                      if (!time) return <div key={index} className="h-24 bg-transparent border-none"></div>;
+
                       if (checkBreakOverlap(time, customBreaks)) {
                         const b = checkBreakOverlap(time, customBreaks);
                         return (
-                          <div key={index} className="h-24 bg-muted/50 rounded-[14px] flex items-center justify-center relative overflow-hidden group">
-                            <span className="bg-background/95 px-5 py-2 rounded-full border border-border text-foreground font-heading font-bold tracking-[0.2em] uppercase text-sm relative z-10 shadow-sm backdrop-blur-md">{b?.name}</span>
+                          <div key={index} className="h-24 bg-muted/50 rounded-[14px] flex flex-col items-center justify-center relative overflow-hidden group">
+                            <span className="text-[10px] font-medium text-muted-foreground mb-1">{time}</span>
+                            <span className="bg-background/95 px-5 py-2 rounded-full border border-border text-foreground font-heading font-bold tracking-[0.2em] uppercase text-xs relative z-10 shadow-sm backdrop-blur-md">{b?.name}</span>
                           </div>
                         )
                       }
                       
                       const slot = getTeacherSlot(selectedTeacher, day, index);
                       
-                      if (!slot) return <div key={index} className="h-20 bg-card rounded-[14px] border border-dashed border-border/50 flex items-center justify-center text-muted-foreground/30 text-xs">Free Period</div>;
+                      if (!slot || slot.type === "FREE") return (
+                        <div key={index} className="h-24 bg-card rounded-[14px] border border-dashed border-border/50 flex flex-col items-center justify-center text-muted-foreground/30 text-xs">
+                          <span className="text-[10px] font-medium text-muted-foreground/50 mb-1">{time}</span>
+                          Free Period
+                        </div>
+                      );
 
                       return (
-                        <div key={index} className="h-20 bg-amber-500/10 hover:bg-amber-500/20 rounded-[14px] border border-amber-500/20 p-3 flex flex-col justify-between group cursor-grab transition-colors shadow-sm hover:shadow-md">
+                        <div key={index} className="h-24 bg-amber-500/10 hover:bg-amber-500/20 rounded-[14px] border border-amber-500/20 p-3 pt-6 flex flex-col justify-between group cursor-grab transition-colors shadow-sm hover:shadow-md relative">
+                          <div className="absolute top-2 left-3 text-[9px] font-medium text-amber-700/60 dark:text-amber-400/60 flex items-center gap-1">
+                            <Clock size={10} className="opacity-50" /> {time}
+                          </div>
                           <div className="flex justify-between items-start">
                             <span className="font-semibold text-sm text-amber-600 dark:text-amber-400 line-clamp-1">{slot.subject?.name}</span>
                           </div>
@@ -862,7 +982,7 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
             {/* --- MASTER VIEW (ALL TEACHERS) --- */}
             {viewMode === "master" && (
               <div className="flex flex-col min-h-full snap-y snap-mandatory">
-                {(selectedDay === "All Week" ? DAYS : [selectedDay]).map((currentDay) => (
+                {(selectedDay === "All Week" ? activeDays : [selectedDay]).map((currentDay) => (
                   <div key={currentDay} className="flex flex-col min-h-full snap-start shrink-0 pt-2 pb-8">
                     {selectedDay === "All Week" && (
                       <h4 className="text-lg font-heading font-semibold text-foreground mb-4 pl-2 border-l-4 border-primary sticky left-0">
@@ -871,13 +991,14 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
                     )}
                     <div className="grid gap-3" style={{ gridTemplateColumns: `100px repeat(${teachers.length}, minmax(180px, 1fr))` }}>
                       <div className="space-y-3">
-                        <div className="h-12 flex items-end justify-center pb-2 text-sm font-medium text-muted-foreground border-b border-border/50">Time</div>
-                        {dynamicPeriods.map(time => {
-                          const isBreak = checkBreakOverlap(time, customBreaks);
+                        <div className="h-12 flex items-end justify-center pb-2 text-sm font-medium text-muted-foreground border-b border-border/50">Period</div>
+                        {Array.from({ length: maxPeriodsCount }).map((_, index) => {
+                          const time = currentDay === "Saturday" ? saturdayPeriods[index] : dynamicPeriods[index];
+                          if (!time) return <div key={index} className="h-24 bg-transparent border-none"></div>;
                           return (
-                            <div key={time} className={`${isBreak ? "h-24" : "h-20"} flex items-center justify-center text-xs font-semibold text-muted-foreground/80 bg-muted/30 rounded-[14px] border border-border/30`}>
-                              <Clock size={12} className="mr-1.5 opacity-50" />
-                              {time}
+                            <div key={index} className={`h-24 flex flex-col items-center justify-center text-xs font-semibold text-muted-foreground/80 bg-muted/30 rounded-[14px] border border-border/30`}>
+                              <span className="mb-1">P{index + 1}</span>
+                              <span className="text-[9px] font-normal opacity-70">{time}</span>
                             </div>
                           )
                         })}
@@ -887,7 +1008,10 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
                           <div className="h-12 flex items-end justify-center pb-2 text-sm font-medium text-foreground border-b border-border/50 truncate px-2">
                             {teacher.name}
                           </div>
-                          {dynamicPeriods.map((time, index) => {
+                          {Array.from({ length: maxPeriodsCount }).map((_, index) => {
+                            const time = currentDay === "Saturday" ? saturdayPeriods[index] : dynamicPeriods[index];
+                            if (!time) return <div key={index} className="h-24 bg-transparent border-none"></div>;
+
                             if (checkBreakOverlap(time, customBreaks)) {
                               const b = checkBreakOverlap(time, customBreaks);
                               return (
@@ -899,10 +1023,17 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
 
                             const slot = getTeacherSlot(teacher.id, currentDay, index);
                             
-                            if (!slot) return <div key={index} className="h-20 bg-card rounded-[14px] border border-dashed border-border/50 flex items-center justify-center text-muted-foreground/30 text-xs">Free</div>;
+                            if (!slot || slot.type === "FREE") return (
+                                <div key={index} className="h-24 bg-card rounded-[14px] border border-dashed border-border/50 flex flex-col items-center justify-center text-muted-foreground/30 text-xs">
+                                  Free
+                                </div>
+                            );
 
                             return (
-                              <div key={index} className="h-20 bg-blue-500/10 hover:bg-blue-500/20 rounded-[14px] border border-blue-500/20 p-3 flex flex-col justify-between group cursor-grab transition-colors shadow-sm">
+                              <div key={index} className="h-24 bg-blue-500/10 hover:bg-blue-500/20 rounded-[14px] border border-blue-500/20 p-3 pt-6 flex flex-col justify-between group cursor-grab transition-colors shadow-sm relative">
+                                <div className="absolute top-2 left-3 text-[9px] font-medium text-blue-700/60 dark:text-blue-400/60 flex items-center gap-1">
+                                  <Clock size={10} className="opacity-50" /> {time}
+                                </div>
                                 <div className="flex justify-between items-start">
                                   <span className="font-semibold text-sm text-blue-600 dark:text-blue-400 line-clamp-1">{slot.subject?.name}</span>
                                 </div>
