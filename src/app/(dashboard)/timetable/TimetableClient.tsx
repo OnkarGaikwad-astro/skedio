@@ -1102,7 +1102,7 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
                     ) : (
                       <div className="space-y-2">
                         <Label>Class</Label>
-                        <Select value={editSlotData.classId || ""} onValueChange={(val) => setEditSlotData({ ...editSlotData, classId: val as string | undefined })}>
+                        <Select value={editSlotData.classId || ""} onValueChange={(val) => setEditSlotData({ ...editSlotData, classId: val || "" })}>
                           <SelectTrigger className="w-full rounded-[14px]">
                             <SelectValue placeholder="Select Class">
                               {(() => {
