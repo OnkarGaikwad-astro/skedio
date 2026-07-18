@@ -15,18 +15,19 @@ const josefinHeading = Josefin_Sans({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://skedio.astronkar.in"),
   title: {
     default: "Skedio | Intelligent School Timetable Platform",
     template: "%s | Skedio"
   },
   description: "Skedio is a premium school timetable management platform. Automatically detect conflicts and optimize teacher workload with our intelligent scheduling engine.",
-  keywords: ["school timetable", "scheduling software", "education management", "intelligent timetable", "school administration", "teacher scheduling", "Skedio"],
+  keywords: ["school timetable", "scheduling software", "education management", "intelligent timetable", "school administration", "teacher scheduling", "Skedio", "Onkar Gaikwad", "Astronkar"],
   authors: [{ name: "Onkar Gaikwad" }],
   creator: "Onkar Gaikwad",
   openGraph: {
     type: "website",
     locale: "en_US",
-    url: "https://skedio.com",
+    url: "https://skedio.astronkar.in",
     title: "Skedio | Intelligent School Timetable Platform",
     description: "Premium School Timetable Management Platform. Automatically detect conflicts and optimize teacher workload.",
     siteName: "Skedio",
@@ -36,6 +37,10 @@ export const metadata: Metadata = {
     title: "Skedio | Intelligent School Timetable Platform",
     description: "Premium School Timetable Management Platform. Automatically detect conflicts and optimize teacher workload.",
     creator: "@onkargaikwad",
+  },
+  icons: {
+    icon: "/icon-512x512.png",
+    apple: "/icon-512x512.png",
   },
   robots: {
     index: true,

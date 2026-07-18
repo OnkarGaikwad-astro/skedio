@@ -111,6 +111,23 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
   const [exportType, setExportType] = useState<"current" | "master" | "all-classes" | "class" | "teacher">("current");
   const [exportEntityId, setExportEntityId] = useState<string>("");
   
+  // Edit Mode State
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editSlotData, setEditSlotData] = useState<{
+    isOpen: boolean;
+    classId: string;
+    originalClassId?: string;
+    day: string;
+    index: number;
+    time: string;
+    currentType: "CLASS" | "FREE" | "BREAK";
+    currentSubjectId?: string;
+    currentTeacherId?: string;
+    breakName?: string;
+    customTime?: string;
+    sourceView: "class" | "teacher" | "master";
+  }>({ isOpen: false, classId: "", day: "", index: -1, time: "", currentType: "FREE", sourceView: "class" });
+  
   const timetableRef = useRef<HTMLDivElement>(null);
   
   // Settings State - Load from initialTimetable if it exists
@@ -521,6 +538,8 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
             const slot = schedule[`${classData.id}-${day}-${index}`];
             if (slot && slot.type === "CLASS") {
               row.push({ content: "\n\n\n\n", customData: { type: 'slot', subject: slot.subject?.name || '', teacher: slot.teacher?.name || '', time: time } });
+            } else if (slot && slot.type === "BREAK") {
+              row.push({ content: "\n\n\n\n", customData: { type: 'break', name: slot.name.toUpperCase(), time: slot.customTime || time } });
             } else {
               row.push({ content: "\n\n\n\n", customData: { type: 'free' } });
             }
@@ -587,6 +606,8 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
             const slot = getTeacherSlot(teacherData.id, day, index);
             if (slot && slot.type === "CLASS") {
               row.push({ content: "\n\n\n\n", customData: { type: 'slot', subject: slot.subject?.name || '', teacher: `Class ${slot.classInfo?.name || ''} ${slot.classInfo?.division || ''}`, time: time } });
+            } else if (slot && slot.type === "BREAK") {
+              row.push({ content: "\n\n\n\n", customData: { type: 'break', name: slot.name.toUpperCase(), time: slot.customTime || time } });
             } else {
               row.push({ content: "\n\n\n\n", customData: { type: 'free' } });
             }
@@ -626,6 +647,8 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
             const slot = getTeacherSlot(teacher.id, day, index);
             if (slot && slot.type === "CLASS") {
               row.push({ content: "\n\n\n\n", customData: { type: 'slot', subject: slot.subject?.name || '', teacher: `Class ${slot.classInfo?.name || ''} ${slot.classInfo?.division || ''}`, time: time } });
+            } else if (slot && slot.type === "BREAK") {
+              row.push({ content: "\n\n\n\n", customData: { type: 'break', name: slot.name.toUpperCase(), time: slot.customTime || time } });
             } else {
               row.push({ content: "\n\n\n\n", customData: { type: 'free' } });
             }
@@ -718,7 +741,30 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
         </div>
 
         <div className="flex items-center gap-3">
-          <button 
+            <div className="h-6 w-px bg-border/50 mx-1 hidden sm:block"></div>
+            
+            {isEditMode && (
+              <button
+                onClick={() => {
+                  if (confirm("Are you sure you want to clear the entire timetable?")) {
+                    setSchedule({});
+                  }
+                }}
+                className="h-10 px-4 rounded-[14px] flex items-center justify-center gap-2 text-sm font-medium transition-all bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 shadow-sm"
+              >
+                Clear All
+              </button>
+            )}
+            
+            <button
+              onClick={() => setIsEditMode(!isEditMode)}
+              className={`h-10 px-4 rounded-[14px] flex items-center justify-center gap-2 text-sm font-medium transition-all ${isEditMode ? 'bg-amber-500/10 text-amber-600 border border-amber-500/20 shadow-sm' : 'bg-background hover:bg-muted/50 border border-border text-foreground'}`}
+            >
+              <SlidersHorizontal size={16} />
+              <span className="hidden sm:inline">{isEditMode ? "Done Editing" : "Manual Edit"}</span>
+            </button>
+
+            <button 
             onClick={generateTimetable}
             disabled={isGenerating || classes.length === 0 || subjects.length === 0 || dynamicPeriods.length === 0}
             className="h-10 px-5 rounded-[14px] bg-secondary text-secondary-foreground hover:bg-secondary/90 transition-all flex items-center gap-2 text-sm font-medium shadow-sm disabled:opacity-50"
@@ -977,12 +1023,181 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
               </div>
             </DialogContent>
           </Dialog>
+
+          {/* Edit Slot Dialog */}
+          <Dialog open={editSlotData.isOpen} onOpenChange={(open) => setEditSlotData({ ...editSlotData, isOpen: open })}>
+            <DialogContent className="sm:max-w-[425px] rounded-[20px]">
+              <DialogHeader>
+                <DialogTitle className="font-heading text-xl">Edit Slot - {editSlotData.day} {editSlotData.time}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-6 mt-4">
+                <div className="space-y-2">
+                  <Label>Slot Type</Label>
+                  <Select value={editSlotData.currentType} onValueChange={(val: "CLASS" | "FREE" | "BREAK") => setEditSlotData({ ...editSlotData, currentType: val })}>
+                    <SelectTrigger className="w-full rounded-[14px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="CLASS">Class</SelectItem>
+                      <SelectItem value="FREE">Free Period</SelectItem>
+                      <SelectItem value="BREAK">Break</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                {editSlotData.currentType === "BREAK" && (
+                  <>
+                    <div className="space-y-2">
+                      <Label>Break Name</Label>
+                      <input 
+                        type="text" 
+                        placeholder="e.g., Lunch Break"
+                        value={editSlotData.breakName || ""}
+                        onChange={(e) => setEditSlotData({ ...editSlotData, breakName: e.target.value })}
+                        className="h-10 px-3 w-full rounded-[14px] border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Custom Time</Label>
+                      <input 
+                        type="text" 
+                        placeholder={`e.g., ${editSlotData.time}`}
+                        value={editSlotData.customTime || ""}
+                        onChange={(e) => setEditSlotData({ ...editSlotData, customTime: e.target.value })}
+                        className="h-10 px-3 w-full rounded-[14px] border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
+                      />
+                    </div>
+                  </>
+                )}
+                
+                {editSlotData.currentType === "CLASS" && (
+                  <>
+                    <div className="space-y-2">
+                      <Label>Subject</Label>
+                      <Select value={editSlotData.currentSubjectId || ""} onValueChange={(val) => setEditSlotData({ ...editSlotData, currentSubjectId: val })}>
+                        <SelectTrigger className="w-full rounded-[14px]">
+                          <SelectValue placeholder="Select Subject">
+                            {subjects.find(s => s.id === editSlotData.currentSubjectId)?.name || "Select Subject"}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {subjects.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {editSlotData.sourceView === "class" ? (
+                      <div className="space-y-2">
+                        <Label>Teacher</Label>
+                        <Select value={editSlotData.currentTeacherId || ""} onValueChange={(val) => setEditSlotData({ ...editSlotData, currentTeacherId: val })}>
+                          <SelectTrigger className="w-full rounded-[14px]">
+                            <SelectValue placeholder="Select Teacher">
+                              {teachers.find(t => t.id === editSlotData.currentTeacherId)?.name || "Select Teacher"}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            {teachers.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <Label>Class</Label>
+                        <Select value={editSlotData.classId || ""} onValueChange={(val) => setEditSlotData({ ...editSlotData, classId: val })}>
+                          <SelectTrigger className="w-full rounded-[14px]">
+                            <SelectValue placeholder="Select Class">
+                              {(() => {
+                                const c = classes.find(c => c.id === editSlotData.classId);
+                                return c ? `${c.name} ${c.division}` : "Select Class";
+                              })()}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            {classes.map(c => <SelectItem key={c.id} value={c.id}>{c.name} {c.division}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </>
+                )}
+                
+                {editSlotData.currentType === "CLASS" && (
+                  <div className="text-xs text-muted-foreground p-3 bg-muted/50 rounded-lg border border-border/50">
+                    {(() => {
+                      if (editSlotData.sourceView === "class" && editSlotData.currentTeacherId) {
+                        const busySlot = Object.keys(schedule).find(key => 
+                          key.endsWith(`-${editSlotData.day}-${editSlotData.index}`) && 
+                          !key.startsWith(`${editSlotData.classId}-`) &&
+                          schedule[key].type === "CLASS" &&
+                          schedule[key].teacher?.id === editSlotData.currentTeacherId
+                        );
+                        if (busySlot) {
+                          const busyClassId = busySlot.split('-')[0];
+                          const busyClass = classes.find(c => c.id === busyClassId);
+                          return <span className="text-destructive font-medium">Warning: Teacher is already assigned to Class {busyClass?.name} {busyClass?.division} at this time!</span>;
+                        }
+                        return "Teacher is available for this slot.";
+                      } else if (editSlotData.sourceView !== "class" && editSlotData.classId) {
+                        const slotKey = `${editSlotData.classId}-${editSlotData.day}-${editSlotData.index}`;
+                        const existingSlot = schedule[slotKey];
+                        if (existingSlot && existingSlot.type === "CLASS" && existingSlot.teacher?.id !== editSlotData.currentTeacherId) {
+                          return <span className="text-destructive font-medium">Warning: Class is already assigned to Teacher {existingSlot.teacher?.name} at this time!</span>;
+                        }
+                        return "Class is available for this slot.";
+                      }
+                      return "Select options to check availability.";
+                    })()}
+                  </div>
+                )}
+                
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setEditSlotData({ ...editSlotData, isOpen: false })}
+                    className="flex-1 bg-muted text-foreground py-2.5 rounded-[14px] text-sm font-medium hover:bg-muted/80 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      const newSchedule = { ...schedule };
+                      
+                      if (editSlotData.originalClassId && editSlotData.originalClassId !== editSlotData.classId) {
+                        newSchedule[`${editSlotData.originalClassId}-${editSlotData.day}-${editSlotData.index}`] = { type: "FREE" };
+                      }
+                      
+                      if (editSlotData.classId) {
+                        const slotKey = `${editSlotData.classId}-${editSlotData.day}-${editSlotData.index}`;
+                        
+                        if (editSlotData.currentType === "FREE") {
+                          newSchedule[slotKey] = { type: "FREE" };
+                        } else if (editSlotData.currentType === "BREAK") {
+                          newSchedule[slotKey] = { type: "BREAK", name: editSlotData.breakName || "Break", customTime: editSlotData.customTime };
+                        } else if (editSlotData.currentType === "CLASS" && editSlotData.currentSubjectId && editSlotData.currentTeacherId) {
+                          const subject = subjects.find(s => s.id === editSlotData.currentSubjectId);
+                          const teacher = teachers.find(t => t.id === editSlotData.currentTeacherId);
+                          const cls = classes.find(c => c.id === editSlotData.classId);
+                          if (subject && teacher && cls) {
+                            newSchedule[slotKey] = { type: "CLASS", subject, teacher, classInfo: cls };
+                          }
+                        }
+                      }
+                      
+                      setSchedule(newSchedule);
+                      setEditSlotData({ ...editSlotData, isOpen: false });
+                    }}
+                    className="flex-1 bg-primary text-primary-foreground py-2.5 rounded-[14px] text-sm font-medium hover:bg-primary/90 transition-colors"
+                  >
+                    Save Slot
+                  </button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
       {/* Grid Container */}
       <div id="timetable-container" className="flex-1 overflow-auto rounded-[18px] border border-border/50 bg-background/50 relative snap-y snap-mandatory bg-white dark:bg-zinc-950 pb-8">
-        {Object.keys(schedule).length === 0 ? (
+        {Object.keys(schedule).length === 0 && !isEditMode ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground animate-in fade-in duration-1000">
             <div className="w-20 h-20 bg-primary/5 rounded-full flex items-center justify-center mb-4">
               <CalendarIcon size={32} className="text-primary/40" />
@@ -1025,15 +1240,40 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
                         )
                       }
                       
+                      const onSlotClick = () => {
+                        if (!isEditMode) return;
+                        setEditSlotData({
+                          isOpen: true,
+                          classId: selectedClass,
+                          day,
+                          index,
+                          time,
+                          currentType: slot && slot.type !== "FREE" ? slot.type : "FREE",
+                          currentSubjectId: slot?.subject?.id,
+                          currentTeacherId: slot?.teacher?.id,
+                          breakName: slot?.type === "BREAK" ? slot.name : "",
+                          customTime: slot?.customTime || ""
+                        });
+                      };
+                      
                       if (!slot || slot.type === "FREE") return (
-                        <div key={index} className="h-24 bg-card rounded-[14px] border border-dashed border-border/50 flex flex-col items-center justify-center text-muted-foreground/30 text-xs">
+                        <div key={index} onClick={onSlotClick} className={`h-24 bg-card rounded-[14px] border border-dashed border-border/50 flex flex-col items-center justify-center text-muted-foreground/30 text-xs ${isEditMode ? 'cursor-pointer hover:bg-muted/50 hover:border-primary/50 transition-colors' : ''}`}>
                           <span className="text-[10px] font-medium text-muted-foreground/50 mb-1">{time}</span>
-                          Empty
+                          {isEditMode ? <span className="text-primary/70 font-medium">Click to Edit</span> : "Empty"}
                         </div>
                       );
+
+                      if (slot.type === "BREAK") {
+                        return (
+                          <div key={index} onClick={onSlotClick} className={`h-24 bg-muted/50 rounded-[14px] flex flex-col items-center justify-center relative overflow-hidden group ${isEditMode ? 'cursor-pointer hover:border hover:border-primary/50 transition-colors' : ''}`}>
+                            <span className="text-[10px] font-medium text-muted-foreground mb-1">{slot.customTime || time}</span>
+                            <span className="bg-background/95 px-5 py-2 rounded-full border border-border text-foreground font-heading font-bold tracking-[0.2em] uppercase text-xs relative z-10 shadow-sm backdrop-blur-md">{slot.name}</span>
+                          </div>
+                        )
+                      }
                       
                       return (
-                        <div key={index} className="h-24 bg-card hover:bg-muted/50 rounded-[14px] border border-border/80 p-3 pt-6 flex flex-col justify-between group cursor-grab transition-colors shadow-sm hover:shadow-md relative">
+                        <div key={index} onClick={onSlotClick} className={`h-24 bg-card hover:bg-muted/50 rounded-[14px] border border-border/80 p-3 pt-6 flex flex-col justify-between group transition-colors shadow-sm hover:shadow-md relative ${isEditMode ? 'cursor-pointer ring-1 ring-transparent hover:ring-primary/50' : 'cursor-grab'}`}>
                           <div className="absolute top-2 left-3 text-[9px] font-medium text-muted-foreground/80 flex items-center gap-1">
                             <Clock size={10} className="opacity-50" /> {time}
                           </div>
@@ -1086,15 +1326,33 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
                       
                       const slot = getTeacherSlot(selectedTeacher, day, index);
                       
+                      const onTeacherSlotClick = () => {
+                        if (!isEditMode) return;
+                        setEditSlotData({
+                          isOpen: true,
+                          classId: slot?.classInfo?.id || "",
+                          originalClassId: slot?.classInfo?.id,
+                          day,
+                          index,
+                          time,
+                          currentType: slot && slot.type !== "FREE" ? slot.type : "FREE",
+                          currentSubjectId: slot?.subject?.id,
+                          currentTeacherId: selectedTeacher,
+                          breakName: slot?.type === "BREAK" ? slot.name : "",
+                          customTime: slot?.customTime || "",
+                          sourceView: "teacher"
+                        });
+                      };
+                      
                       if (!slot || slot.type === "FREE") return (
-                        <div key={index} className="h-24 bg-card rounded-[14px] border border-dashed border-border/50 flex flex-col items-center justify-center text-muted-foreground/30 text-xs">
+                        <div key={index} onClick={onTeacherSlotClick} className={`h-24 bg-card rounded-[14px] border border-dashed border-border/50 flex flex-col items-center justify-center text-muted-foreground/30 text-xs ${isEditMode ? 'cursor-pointer hover:bg-muted/50 hover:border-primary/50 transition-colors' : ''}`}>
                           <span className="text-[10px] font-medium text-muted-foreground/50 mb-1">{time}</span>
-                          Free Period
+                          {isEditMode ? <span className="text-primary/70 font-medium">Click to Edit</span> : "Free"}
                         </div>
                       );
 
                       return (
-                        <div key={index} className="h-24 bg-amber-500/10 hover:bg-amber-500/20 rounded-[14px] border border-amber-500/20 p-3 pt-6 flex flex-col justify-between group cursor-grab transition-colors shadow-sm hover:shadow-md relative">
+                        <div key={index} onClick={onTeacherSlotClick} className={`h-24 bg-amber-500/10 hover:bg-amber-500/20 rounded-[14px] border border-amber-500/20 p-3 pt-6 flex flex-col justify-between group transition-colors shadow-sm hover:shadow-md relative ${isEditMode ? 'cursor-pointer ring-1 ring-transparent hover:ring-primary/50' : 'cursor-grab'}`}>
                           <div className="absolute top-2 left-3 text-[9px] font-medium text-amber-700/60 dark:text-amber-400/60 flex items-center gap-1">
                             <Clock size={10} className="opacity-50" /> {time}
                           </div>
@@ -1160,15 +1418,33 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
                             }
 
                             const slot = getTeacherSlot(teacher.id, currentDay, index);
+                                
+                            const onMasterSlotClick = () => {
+                              if (!isEditMode) return;
+                              setEditSlotData({
+                                isOpen: true,
+                                classId: slot?.classInfo?.id || "",
+                                originalClassId: slot?.classInfo?.id,
+                                day: currentDay,
+                                index,
+                                time,
+                                currentType: slot && slot.type !== "FREE" ? slot.type : "FREE",
+                                currentSubjectId: slot?.subject?.id,
+                                currentTeacherId: teacher.id,
+                                breakName: slot?.type === "BREAK" ? slot.name : "",
+                                customTime: slot?.customTime || "",
+                                sourceView: "master"
+                              });
+                            };
                             
                             if (!slot || slot.type === "FREE") return (
-                                <div key={index} className="h-24 bg-card rounded-[14px] border border-dashed border-border/50 flex flex-col items-center justify-center text-muted-foreground/30 text-xs">
-                                  Free
+                                <div key={index} onClick={onMasterSlotClick} className={`h-24 bg-card rounded-[14px] border border-dashed border-border/50 flex flex-col items-center justify-center text-muted-foreground/30 text-xs ${isEditMode ? 'cursor-pointer hover:bg-muted/50 hover:border-primary/50 transition-colors' : ''}`}>
+                                  {isEditMode ? <span className="text-primary/70 font-medium">Click to Edit</span> : "Free"}
                                 </div>
                             );
 
                             return (
-                              <div key={index} className="h-24 bg-blue-500/10 hover:bg-blue-500/20 rounded-[14px] border border-blue-500/20 p-3 pt-6 flex flex-col justify-between group cursor-grab transition-colors shadow-sm relative">
+                              <div key={index} onClick={onMasterSlotClick} className={`h-24 bg-blue-500/10 hover:bg-blue-500/20 rounded-[14px] border border-blue-500/20 p-3 pt-6 flex flex-col justify-between group transition-colors shadow-sm hover:shadow-md relative ${isEditMode ? 'cursor-pointer ring-1 ring-transparent hover:ring-primary/50' : 'cursor-grab'}`}>
                                 <div className="absolute top-2 left-3 text-[9px] font-medium text-blue-700/60 dark:text-blue-400/60 flex items-center gap-1">
                                   <Clock size={10} className="opacity-50" /> {time}
                                 </div>
