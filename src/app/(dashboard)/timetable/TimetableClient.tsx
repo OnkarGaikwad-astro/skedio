@@ -476,7 +476,7 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
       const tableStyles = {
         theme: 'plain' as const,
         styles: { font: 'helvetica', fontSize: 10, cellPadding: 2, halign: 'center' as const, valign: 'middle' as const },
-        headStyles: { fillColor: [248, 250, 252] as [number, number, number], textColor: [15, 23, 42], fontStyle: 'bold' as const },
+        headStyles: { fillColor: [248, 250, 252] as [number, number, number], textColor: [15, 23, 42] as [number, number, number], fontStyle: 'bold' as const },
         didDrawCell: customDrawCell,
         rowPageBreak: 'avoid' as const
       };
@@ -1033,7 +1033,7 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
               <div className="space-y-6 mt-4">
                 <div className="space-y-2">
                   <Label>Slot Type</Label>
-                  <Select value={editSlotData.currentType} onValueChange={(val: "CLASS" | "FREE" | "BREAK") => setEditSlotData({ ...editSlotData, currentType: val })}>
+                  <Select value={editSlotData.currentType} onValueChange={(val) => setEditSlotData({ ...editSlotData, currentType: val as "CLASS" | "FREE" | "BREAK" })}>
                     <SelectTrigger className="w-full rounded-[14px]">
                       <SelectValue />
                     </SelectTrigger>
