@@ -1252,7 +1252,8 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
                           currentSubjectId: slot?.subject?.id,
                           currentTeacherId: slot?.teacher?.id,
                           breakName: slot?.type === "BREAK" ? slot.name : "",
-                          customTime: slot?.customTime || ""
+                          customTime: slot?.customTime || "",
+                          sourceView: "class"
                         });
                       };
                       
