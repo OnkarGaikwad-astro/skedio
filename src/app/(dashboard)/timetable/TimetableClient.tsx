@@ -1074,7 +1074,7 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
                   <>
                     <div className="space-y-2">
                       <Label>Subject</Label>
-                      <Select value={editSlotData.currentSubjectId || ""} onValueChange={(val) => setEditSlotData({ ...editSlotData, currentSubjectId: val })}>
+                      <Select value={editSlotData.currentSubjectId || ""} onValueChange={(val) => setEditSlotData({ ...editSlotData, currentSubjectId: val as string | undefined })}>
                         <SelectTrigger className="w-full rounded-[14px]">
                           <SelectValue placeholder="Select Subject">
                             {subjects.find(s => s.id === editSlotData.currentSubjectId)?.name || "Select Subject"}
@@ -1088,7 +1088,7 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
                     {editSlotData.sourceView === "class" ? (
                       <div className="space-y-2">
                         <Label>Teacher</Label>
-                        <Select value={editSlotData.currentTeacherId || ""} onValueChange={(val) => setEditSlotData({ ...editSlotData, currentTeacherId: val })}>
+                        <Select value={editSlotData.currentTeacherId || ""} onValueChange={(val) => setEditSlotData({ ...editSlotData, currentTeacherId: val as string | undefined })}>
                           <SelectTrigger className="w-full rounded-[14px]">
                             <SelectValue placeholder="Select Teacher">
                               {teachers.find(t => t.id === editSlotData.currentTeacherId)?.name || "Select Teacher"}
@@ -1102,7 +1102,7 @@ export function TimetableClient({ classes, teachers, subjects, customBreaks, ini
                     ) : (
                       <div className="space-y-2">
                         <Label>Class</Label>
-                        <Select value={editSlotData.classId || ""} onValueChange={(val) => setEditSlotData({ ...editSlotData, classId: val })}>
+                        <Select value={editSlotData.classId || ""} onValueChange={(val) => setEditSlotData({ ...editSlotData, classId: val as string | undefined })}>
                           <SelectTrigger className="w-full rounded-[14px]">
                             <SelectValue placeholder="Select Class">
                               {(() => {
